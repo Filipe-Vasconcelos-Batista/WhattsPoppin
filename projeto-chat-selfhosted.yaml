@@ -1,0 +1,290 @@
+projeto: WhattsPoppin - App de chat self-hosted federada
+dominio: whattspoppin.io (ou semelhante) - a tratar mais tarde (DNS, certificados, etc.)
+licenca: AGPL-3.0 (escolha do owner, não imposta por nenhuma biblioteca)
+mvp: >
+  Mensagens de texto 1:1 cifradas entre dois utilizadores do mesmo servidor,
+  num só cliente. Sem federação, grupos, figurinhas ou push nesta primeira
+  versão - tudo o resto constrói-se por cima disto.
+conceito: >
+  App tipo WhatsApp onde cada pessoa (ou grupo de amigos) corre o seu próprio
+  servidor. Servidores federam entre si (como email), sem depender de
+  infraestrutura de terceiros. Cifra ponta-a-ponta, sem serviços externos
+  para media (figurinhas/GIFs).
+
+stack:
+  frontend:
+    framework: React Native (via Expo, suporta build web nativamente)
+    ordem_de_plataformas: [web (MVP), mobile Android, desktop Linux]
+    web: React Native Web - primeiro cliente a existir, usado para o MVP
+    mobile: React Native - Android primeiro (mais barato/simples de testar,
+      sem custo de Apple Developer nem revisão de loja). iOS ainda por
+      posicionar nesta ordem.
+    desktop_linux: >
+      último da fila - sem cliente nativo até lá, usa-se a versão web no
+      browser. Tauri fica em aberto para essa altura, se se quiser
+      notificações D-Bus nativas e empacotamento Flatpak (perdidos ao usar
+      só a versão web).
+    cifra_em_mobile_nativo: >
+      vodozemac usa WASM, que o motor Hermes do React Native NÃO suporta
+      (WASM só corre no browser/web). Plano: módulo nativo próprio via JSI,
+      ligando o núcleo Rust da vodozemac ao RN, compilado à parte para
+      Android e iOS - só necessário quando se avançar para build mobile
+      nativa, não bloqueia o MVP (que corre em web).
+  backend:
+    linguagem: Python
+    framework_provavel: FastAPI (WebSockets nativos, async)
+  base_de_dados:
+    motor: PostgreSQL
+    modelo: multi-tenant lógico (isolamento por user_id, não bases separadas)
+  encriptacao: >
+    vodozemac (Olm 1:1 + Megolm grupos) - primo do Signal Protocol, mesmo
+    Double Ratchet. Escolhida em vez da libsignal oficial porque é feita para
+    uso por terceiros (API estável, documentada, bindings WASM/JS e Python),
+    enquanto a libsignal se declara "não suportada para uso fora do Signal,
+    API pode mudar sem aviso". Servidor nunca vê conteúdo.
+  infraestrutura:
+    hosting: máquina física em casa, container Docker
+    reverse_proxy: Caddy (HTTPS automático via Let's Encrypt)
+    dns_dinamico: DuckDNS ou Cloudflare
+    portas_abertas: [443, 80]
+    ssh: só via VPN/LAN, nunca exposto publicamente
+
+federacao:
+  descoberta: .well-known/chatapp/server
+  handshake: desafio + assinatura Ed25519, bidirecional, gravado uma vez em federated_servers
+  modos:
+    aberto: trusted automático após handshake (default escolhido)
+    restrito: fica pending até admin aprovar
+  bloqueio: admin pode bloquear um domínio a qualquer momento (trust_status = blocked)
+  quem_pode_iniciar_contacto_federado: qualquer membro, não só admins
+
+papeis_e_administracao:
+  papeis: [owner, admin, member]
+  moderacao:
+    kick: remove, pode voltar a registar-se com novo convite
+    ban: remove e bloqueia chave/dispositivo (banned_devices)
+  ecrã_admin:
+    - servidores federados (aprovar / rejeitar / bloquear / desbloquear)
+    - membros (expulsar, gerar convites)
+
+identidade_e_nomes:
+  camadas:
+    1: identificador técnico (user@servidor.pt) - nunca aparece na UI normal
+    2: nome de exibição - escolhido pelo próprio, federado, visível a todos
+    3: alcunha - só o dono da conta vê, local, nunca sai do servidor
+  prioridade_exibicao: alcunha > nome de exibição > identificador
+  deteccao_de_ambiguidade:
+    descricao: >
+      Quando duas alcunhas/nomes de exibição coincidem (case-insensitive),
+      ambos os contactos ficam marcados como ambíguos e a app mostra o
+      identificador em cor vibrante no cabeçalho (1:1 e em grupos). Fica na
+      versão final, não é só um detalhe de mockup - previne impersonação.
+    tabela_apoio: contact_name_counts (owner_user_id, effective_name_lower, count)
+    motivo: evita recalcular a lista toda de contactos a cada mudança de nome
+    atualizacao: incremental - só toca nas poucas linhas que partilham o nome que mudou
+    propagacao: servidor calcula uma vez e envia evento contact_ambiguity_changed via
+      WebSocket a todos os dispositivos ligados, para consistência multi-device
+
+personalizacao_de_bolhas:
+  cores: lista fechada de presets (nunca cor livre), por contacto (recebida) e própria (enviada)
+  estilos: [sólido, contorno, padrão]
+  armazenamento: local, nunca federado
+
+mensagens_entrega_e_estado:
+  estados: [pending, delivered, read]
+  online: entrega via WebSocket
+  offline_local: fica pending, entregue no reconnect (ordenado por created_at)
+  offline_federado:
+    mecanismo: federation_outbox
+    retry: backoff exponencial, máx. configurável, depois status = dead
+  confirmacao_leitura:
+    mecanismo: mesmo outbox, evento read_receipt
+  retencao:
+    servidor: >
+      efémero - apaga a mensagem assim que é entregue a TODOS os dispositivos
+      ativos do destinatário (não só o primeiro). Nunca guarda histórico a
+      longo prazo, coerente com a cifra ponta-a-ponta.
+    cliente: >
+      persiste localmente para sempre, numa tabela simples
+      (messages: id, conversation_id, sender_id, texto_decifrado, created_at),
+      até o utilizador apagar. É o que entra no backup cifrado
+      (ver backup_e_restauro_de_chaves) e o que viaja na partilha entre
+      dispositivos (ver multi_dispositivo).
+    mvp: mesmo modelo desde o início, sem simplificação - custo extra é mínimo
+      (uma tabela pequena) e evita reconstruir isto mais tarde
+  a_escrever:
+    persistencia: nenhuma - nunca gravado em BD
+    retry: nenhum - evento efémero, só WebSocket
+    cliente: debounce (~3s desde a última tecla), envia stop explícito ao enviar mensagem
+
+notificacoes_push:
+  mobile:
+    obrigatorio: APNs (iOS) e FCM (Android), mesmo sem publicar em loja
+    conteudo_no_push: nenhum - só "acorda" a app, que vai buscar e decifra localmente
+    custos: [Apple Developer 99 USD/ano, Firebase gratuito]
+    instalacao_sem_loja: [sideload apk (Android), TestFlight (iOS)]
+  linux:
+    mecanismo: WebSocket sempre aberto + notificações nativas via D-Bus (org.freedesktop.Notifications)
+    push_externo: não aplicável
+
+qr_codes:
+  convite_registo: "chatapp://join?server=...&invite=...&pin=<hash-chave-publica-servidor>"
+  contacto_federado: "chatapp://contact?id=...&key=<chave-publica-identidade>"
+  seguranca: verificação visual tipo "número de segurança" do Signal
+
+figurinhas_e_media:
+  upload: utilizadores fazem upload de imagens (figurinhas, GIFs, memes) para
+    o próprio servidor - sem serviço externo, coerente com o resto do projeto
+  deduplicacao: >
+    armazenamento endereçado por conteúdo (content-addressable) - a imagem é
+    guardada uma só vez, identificada pelo hash do seu conteúdo (ex. SHA-256).
+    Se a mesma imagem for enviada/reutilizada de novo, o servidor reconhece
+    o hash e não grava outra cópia - só liga (referencia) a mesma imagem já
+    existente. Aplica-se tanto ao que é carregado explicitamente para a
+    coleção como a imagens usadas em conversas que se tornam reutilizáveis
+    como "memes".
+  por_afinar:
+    - tabela de referência (media_id/hash, quem pode reutilizar, contagem de uso)
+    - ecrã de gestão da coleção (fica fora do MVP)
+
+empacotamento_linux:
+  formato: Flatpak
+  permissoes_previstas: [rede, notificações, câmara (QR scanner), ficheiros (media)]
+  distribuicao: Flathub ou self-hosted (.flatpakref no próprio domínio)
+
+ecrãs_desenhados_no_canvas:
+  - Lista de conversas
+  - Conversa 1:1 (com conflito de nome - identificador em destaque)
+  - Conversa 1:1 (sem conflito de nome - cabeçalho limpo)
+  - Conversa de grupo (dois contactos com o mesmo nome "Pedro")
+  - Indicador "a escrever" (três pontos animados)
+  - Figurinhas / GIFs / Emoji (separadores)
+  - Perfil de contacto (alcunha, cor da bolha, estilo)
+  - O meu perfil (foto, nome de exibição, cor da bolha própria)
+  - Administração (servidores federados, membros)
+  - Adicionar contacto (escolha de método)
+  - O meu código QR
+  - Digitalizar código (câmara simulada)
+  - Amostras de notificações push
+
+backup_e_restauro_de_chaves:
+  modelo_de_confianca: >
+    A chave de cifra do backup fica guardada no servidor, por isso quem tiver
+    acesso root à máquina consegue ler os backups. Aceitável porque, no início,
+    o único admin é o owner. Para a cifra valer mesmo contra o admin é preciso
+    migrar para chave partida entre servidores federados (Shamir, 2 de 3).
+  o_que_entra_no_backup: [chave de identidade, contactos, alcunhas, cores/estilos das bolhas, histórico]
+  o_que_nao_entra:
+    - estado das sessões (ratchets) - restaurar quebra forward secrecy, sessões refazem-se
+    - pre-keys - geram-se novas
+  armazenamento:
+    local: servidor de casa (tabela key_backups)
+    blob: cifrado com a chave de backup do utilizador
+    chave_de_backup: guardada no servidor, cifrada por uma chave mestra do servidor
+    chave_mestra: fora da base de dados (ficheiro/variável de ambiente do container),
+      para que um dump da BD roubado não exponha os backups
+    nunca_visivel: nenhum ecrã, endpoint ou log mostra a chave
+  caminhos_de_restauro:
+    1_dispositivo_antigo_disponivel:
+      mecanismo: transferência direta por QR (opção C)
+      fluxo: dispositivo novo mostra QR, o antigo lê e aprova, transferência cifrada ponta-a-ponta
+        (rede local, ou via servidor se não houver)
+      resultado: mesma identidade + histórico, sem intervenção do admin
+    2_dispositivo_perdido:
+      mecanismo: código temporário gerado pelo admin
+      fluxo: admin confirma a identidade da pessoa e gera o código, o utilizador introduz-o
+        no dispositivo novo, o servidor decifra e entrega o backup
+      resultado: mesma identidade + histórico, os contactos não recebem nenhum aviso
+  codigo_temporario:
+    funcao: só confirma quem é a pessoa, não é nem contém a chave de cifra
+    validade: 15 minutos
+    uso: único, ligado a um utilizador específico
+    tentativas_max: 5, depois fica invalidado
+    efeitos: revoga os dispositivos antigos (banned_devices)
+    auditoria: registado no ecrã de administração + evento para os dispositivos
+      ativos do utilizador (se ainda houver algum)
+  tabela_key_backups: [user_id, version, blob, created_at]
+  por_afinar:
+    - histórico no backup - só texto, ou texto + media até X MB?
+    - frequência - proposta, automático diário
+    - quantas versões guardar - proposta, as últimas 3
+    - exportar para ficheiro - útil se a máquina de casa morrer (liga a "recuperação de acesso ao servidor")
+
+multi_dispositivo:
+  mecanismo: >
+    igual à opção C do backup/restauro - um dispositivo já ativo (trusted)
+    aprova o novo por QR e partilha o histórico local diretamente com ele,
+    cifrado ponta-a-ponta. Mesmo fluxo quer seja para substituir um
+    dispositivo perdido (com o antigo à mão) quer para adicionar um segundo
+    dispositivo em uso simultâneo (ex: telemóvel + web) - um único código
+    para os dois casos, em vez de dois fluxos separados.
+  sem_dispositivo_antigo_disponivel: usa o caminho do código temporário do
+    admin (ver backup_e_restauro_de_chaves) - identidade recuperada, mas só
+    histórico até ao último backup.
+  entrega_a_todos_os_dispositivos: >
+    com mais de um dispositivo ativo, o servidor só apaga a mensagem do
+    outbox depois de TODOS confirmarem entrega, não só o primeiro
+    (ver mensagens_entrega_e_estado.retencao).
+
+esquema_de_grupos:
+  mecanismo: >
+    Megolm (Sender Keys) - cada membro cifra com a sua própria sessão de
+    grupo, mensagem cifrada uma só vez independente do tamanho do grupo.
+    Escolhida em vez de fan-out (cifrar uma cópia por destinatário) porque
+    escala melhor e já vem incluída na vodozemac, sem trabalho extra de
+    biblioteca. Chave de sessão distribuída aos membros através das sessões
+    Olm 1:1 já existentes entre eles.
+  historico_para_novos_membros: >
+    não veem mensagens trocadas antes de entrarem - consistente com o resto
+    do projeto (servidor nunca guarda histórico), cada sessão de grupo
+    começa "limpa" para quem entra.
+  rotacao_de_sessao: >
+    a sessão Megolm roda em QUALQUER mudança de membros - tanto ao entrar
+    como ao sair/ser removido alguém, gera-se sessão nova e reenvia-se aos
+    membros atuais. Um único mecanismo para os dois casos, sem caso especial
+    a mais no código. É o que garante que quem sai/é expulso deixa de
+    conseguir decifrar mensagens novas.
+  por_afinar:
+    - esquema de tabelas (grupo, membros, sessões Megolm por remetente)
+    - ecrã de gestão (criar grupo, adicionar/remover membro federado)
+    - fica fora do MVP (que é só 1:1)
+
+recuperacao_de_acesso_ao_servidor:
+  descricao: distinto de perder chaves pessoais - aqui é sobre quem controla a máquina/app toda
+  caso_1_app_acessivel_mas_sem_acesso_de_owner:
+    problema: és o único admin, não há ninguém para gerar o código temporário
+      que os utilizadores normais usam para recuperar acesso
+    solucao: comando de recuperação que só corre localmente na máquina
+      (ex. docker exec chatapp reset-owner) - não passa pelo mecanismo normal
+      de "admin aprova admin". Justificação: quem chega por SSH/fisicamente
+      já é, por definição, mais confiável que um admin dentro da app
+      (ssh já só é acessível via VPN/LAN, nunca exposto publicamente)
+  caso_2_maquina_morreu:
+    problema: disco avariado, incêndio, roubo - a máquina de casa desaparece
+    gap_identificado: >
+      a chave_mestra que decifra os key_backups dos utilizadores fica fora
+      da BD, só numa variável de ambiente do container (decisão em
+      backup_e_restauro_de_chaves). Sem cópia à parte, perder a máquina
+      significa perder essa chave para sempre - mesmo com a BD copiada,
+      todos os backups de todos os utilizadores ficam ilegíveis.
+    o_que_copiar_para_fora_de_casa: [dump da base de dados, chave_mestra
+      (o mais crítico), certificados TLS, configuração dos containers Docker]
+    destino: >
+      duas camadas - (1) uma pen/disco externo sempre ligado à máquina,
+      cópia automática contínua, protege contra falha do disco principal;
+      (2) periodicamente (ex. mensal) copiar também para uma segunda
+      pen/disco levado fisicamente para outro lado (casa de
+      familiar/amigo, ou trabalho), para cobrir incêndio/roubo/inundação
+      - a camada 1 sozinha não protege contra isto, porque fica no mesmo
+      local que a máquina. Sem depender de mais nenhuma infraestrutura ou
+      serviço de terceiros.
+    frequencia_e_lembrete: por afinar - proposta, lembrete periódico ao owner
+      para atualizar a pen levada para fora (ex. mensal)
+
+por_decidir:
+  - item: Versionamento do protocolo de federação
+    descricao: campo "version" no .well-known para servidores em versões diferentes continuarem a comunicar
+    prioridade: media
+  - item: CGNAT do lado de quem se liga
+    descricao: usar Cloudflare Tunnel se um amigo federado estiver atrás de CGNAT
+    prioridade: baixa
