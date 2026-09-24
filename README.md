@@ -1,10 +1,10 @@
-# WhattsPoppin
+# WatsPoppin
 
 App de chat self-hosted federada, cifrada ponta-a-ponta. Cada pessoa ou grupo
 de amigos corre o próprio servidor; os servidores federam entre si (como
 email), sem depender de infraestrutura de terceiros.
 
-**Estado:** pré-alpha — fase de design, ainda sem código.
+**Estado:** pré-alpha — estrutura inicial dos projetos, ainda sem funcionalidades.
 
 ## MVP
 
@@ -25,11 +25,44 @@ nesta primeira versão — tudo o resto constrói-se por cima disto.
 
 ## Ordem de plataformas
 
-Web (MVP) → mobile Android → desktop Linux.
+Web (MVP) → mobile Android → desktop Linux. iOS ainda por posicionar nesta ordem.
+
+## Estrutura do repositório
+
+```
+WattsPopin/
+├── frontend/    React Native + Expo (TypeScript) — npm run web|android|ios
+├── backend/     FastAPI (Python) — .venv próprio
+├── LICENSE
+├── README.md
+└── projeto-chat-selfhosted.yaml   decisões de arquitetura
+```
+
+## Como correr os linters e testes
+
+**Frontend** (`cd frontend`):
+
+```bash
+npm run lint          # ESLint (eslint-config-expo)
+npm run format:check  # Prettier
+npm run typecheck     # tsc --noEmit
+```
+
+**Backend** (`cd backend`):
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+
+ruff check .      # lint
+mypy app          # verificação de tipos
+pytest -q         # testes
+```
 
 ## Licença
 
-[AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html) 
+[AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html)
+
 ## Documentação
 
 Todas as decisões de arquitetura, o porquê de cada uma e o que ainda falta

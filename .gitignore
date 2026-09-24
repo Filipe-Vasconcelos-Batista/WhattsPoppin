@@ -1,0 +1,12 @@
+# Cada pacote (frontend/, backend/) tem o seu próprio .gitignore mais
+# específico. Isto aqui é só o genérico ao nível da raiz.
+
+# Editores / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Ficheiros de ambiente que nunca devem ir para o Git
+.env
+.env.*
+!.env.example
