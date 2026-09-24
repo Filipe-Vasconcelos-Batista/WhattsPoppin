@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 
-import { bootstrapIdentity, type UserSummary } from '../api/identity';
+import { loginUser, registerUser, resumeSession, type UserSummary } from '../api/auth';
 import { useSocketConnection } from '../hooks/useSocketConnection';
+import { loadMessages, saveMessages } from '../storage/messageStore';
 import { formatTimeNow } from '../utils/time';
 import type { ChatMessage } from '../types/chat';
 
@@ -14,29 +15,33 @@ type IncomingPayload =
 
 type IdentityValue = {
   loading: boolean;
-  error: string | null;
+  authenticated: boolean;
   userId: string | null;
   deviceId: string | null;
   displayName: string | null;
   otherUsers: UserSummary[];
   messages: ChatMessage[];
   sendMessage: (conversationId: string, text: string) => void;
+  login: (username: string, password: string) => Promise<void>;
+  register: (username: string, password: string) => Promise<void>;
 };
 
 const IdentityContext = createContext<IdentityValue>({
   loading: true,
-  error: null,
+  authenticated: false,
   userId: null,
   deviceId: null,
   displayName: null,
   otherUsers: [],
   messages: [],
   sendMessage: () => {},
+  login: async () => {},
+  register: async () => {},
 });
 
 export function IdentityProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [authenticated, setAuthenticated] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
@@ -47,22 +52,29 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     async function run() {
-      try {
-        const storedToken = await AsyncStorage.getItem(STORAGE_KEY);
-        const identity = await bootstrapIdentity(storedToken);
-        await AsyncStorage.setItem(STORAGE_KEY, identity.token);
-
-        if (cancelled) return;
-        setUserId(identity.user_id);
-        setDeviceId(identity.device_id);
-        setDisplayName(identity.display_name);
-        setOtherUsers(identity.other_users);
-        setLoading(false);
-      } catch (err) {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'Erro desconhecido');
-        setLoading(false);
+      const storedToken = await AsyncStorage.getItem(STORAGE_KEY);
+      if (!storedToken) {
+        if (!cancelled) setLoading(false);
+        return;
       }
+
+      const session = await resumeSession(storedToken);
+      if (cancelled) return;
+
+      if (!session) {
+        await AsyncStorage.removeItem(STORAGE_KEY);
+        setLoading(false);
+        return;
+      }
+
+      await applySession(
+        session.token,
+        session.user_id,
+        session.device_id,
+        session.display_name,
+        session.other_users,
+      );
+      setLoading(false);
     }
 
     run();
@@ -70,6 +82,44 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, []);
+
+  async function applySession(
+    token: string,
+    newUserId: string,
+    newDeviceId: string,
+    newDisplayName: string,
+    newOtherUsers: UserSummary[],
+  ) {
+    setUserId(newUserId);
+    setDeviceId(newDeviceId);
+    setDisplayName(newDisplayName);
+    setOtherUsers(newOtherUsers);
+    setAuthenticated(true);
+    setMessages(await loadMessages(newUserId));
+    AsyncStorage.setItem(STORAGE_KEY, token);
+  }
+
+  async function login(username: string, password: string) {
+    const session = await loginUser(username, password);
+    await applySession(
+      session.token,
+      session.user_id,
+      session.device_id,
+      session.display_name,
+      session.other_users,
+    );
+  }
+
+  async function register(username: string, password: string) {
+    const session = await registerUser(username, password);
+    await applySession(
+      session.token,
+      session.user_id,
+      session.device_id,
+      session.display_name,
+      session.other_users,
+    );
+  }
 
   const handlePayload = useCallback((raw: unknown) => {
     const payload = raw as IncomingPayload;
@@ -98,6 +148,11 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
 
   const { send } = useSocketConnection(deviceId, handlePayload);
 
+  useEffect(() => {
+    if (!userId) return;
+    saveMessages(userId, messages);
+  }, [userId, messages]);
+
   function sendMessage(conversationId: string, text: string) {
     setMessages((prev) => [
       ...prev,
@@ -117,13 +172,15 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     <IdentityContext.Provider
       value={{
         loading,
-        error,
+        authenticated,
         userId,
         deviceId,
         displayName,
         otherUsers,
         messages,
         sendMessage,
+        login,
+        register,
       }}
     >
       {children}

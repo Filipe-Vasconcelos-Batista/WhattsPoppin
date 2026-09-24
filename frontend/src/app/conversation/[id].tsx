@@ -1,10 +1,11 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getOrCreateConversation } from '../../api/conversations';
 import { ChatHeader } from '../../components/chat/ChatHeader';
+import { KeyboardStickyView } from '../../components/KeyboardStickyView';
 import { LoadingState } from '../../components/LoadingState';
 import { MessageInputBar } from '../../components/chat/MessageInputBar';
 import { MessageList } from '../../components/chat/MessageList';
@@ -30,6 +31,9 @@ export default function ConversationScreen() {
     };
   }, [identity.userId, otherUserId]);
 
+  if (identity.loading) return <LoadingState />;
+  if (!identity.authenticated) return <Redirect href="/login" />;
+
   const otherUser = identity.otherUsers.find((user) => user.user_id === otherUserId);
 
   if (!otherUser || !conversationId) return <LoadingState />;
@@ -50,16 +54,22 @@ export default function ConversationScreen() {
 
       <KeyboardAvoidingView
         style={styles.body}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        // web fica a cargo do KeyboardStickyView abaixo - o
+        // KeyboardAvoidingView é só para nativo (iOS/Android)
+        behavior={
+          Platform.OS === 'web' ? undefined : Platform.select({ ios: 'padding', android: 'height' })
+        }
         keyboardVerticalOffset={12}
       >
         <View style={styles.messages}>
           <MessageList messages={messages} />
         </View>
 
-        <View style={styles.inputBar}>
-          <MessageInputBar onSend={(text) => identity.sendMessage(conversationId, text)} />
-        </View>
+        <KeyboardStickyView>
+          <View style={styles.inputBar}>
+            <MessageInputBar onSend={(text) => identity.sendMessage(conversationId, text)} />
+          </View>
+        </KeyboardStickyView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

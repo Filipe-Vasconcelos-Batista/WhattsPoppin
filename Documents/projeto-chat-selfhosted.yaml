@@ -11,6 +11,59 @@ conceito: >
   infraestrutura de terceiros. Cifra ponta-a-ponta, sem serviços externos
   para media (figurinhas/GIFs).
 
+estado_de_implementacao:
+  resumo: >
+    Prova de conceito a funcionar - dois ou mais utilizadores conseguem
+    criar conta, ver-se na lista e trocar mensagens de texto em tempo real,
+    testado entre dispositivos diferentes na mesma rede local. Falta a
+    parte mais delicada (cifra) e várias peças do desenho final que foram
+    conscientemente simplificadas para chegar aqui mais depressa.
+  construido:
+    - repositório com frontend (Expo + React Native + TypeScript) e backend
+      (FastAPI + Peewee + PostgreSQL), lint/typecheck/testes configurados
+      nos dois lados
+    - registo e login reais (username + password, hash com bcrypt) - sessão
+      guardada como token no dispositivo, retomada automaticamente
+    - lista de conversas mostra todos os utilizadores do servidor; a
+      conversa só é criada na BD quando se abre pela primeira vez
+      (get_or_create, não é pré-criada no registo)
+    - mensagens de texto 1:1 em tempo real via WebSocket
+    - lista atualiza-se sozinha quando alguém novo se regista (evento
+      user_registered), sem refresh
+    - WebSocket reconecta-se sozinho se o backend cair/reiniciar
+    - mensagens persistem no dispositivo (AsyncStorage/localStorage) por
+      utilizador, sobrevivem a um refresh da página
+    - UI dividida em componentes pequenos e reutilizáveis (Avatar,
+      MessageBubble, GradientButton, etc.)
+  simplificacoes_temporarias:
+    - sem cifra - mensagens em texto simples, só para validar o transporte
+      (vodozemac ainda por integrar)
+    - sem federação - identificador é só o username local, sem
+      user@servidor, .well-known, handshake nem federated_servers
+    - sem alcunha nem deteção de ambiguidade - mostra-se sempre o nome de
+      exibição (= username escolhido no registo)
+    - registo aberto, sem código de convite nem aprovação de admin
+    - ecrã de login sem campo "Servidor" (assume-se sempre este servidor)
+    - sem estados de mensagem (pending/delivered/read) - fica só "enviada"
+    - sem fila de entrega offline - se o destinatário não estiver ligado
+      no momento, a mensagem perde-se (o outbox desenhado em
+      mensagens_entrega_e_estado ainda não existe)
+    - indicador "a escrever" existe como componente mas não está ligado a
+      nenhum evento real
+    - mensagens no cliente ficam em localStorage/AsyncStorage, não
+      IndexedDB - decisão consciente de não otimizar prematuramente
+      (quota ~5-10MB, muito acima do que se está a usar agora)
+  falta:
+    - cifra ponta-a-ponta (vodozemac) - provavelmente a peça mais delicada
+    - fila de entrega offline + estados pending/delivered/read
+    - nome de exibição editável, alcunhas, deteção de ambiguidade
+    - backup e restauro de chaves (praticamente tudo, depende da cifra)
+    - multi-dispositivo - hoje cada login novo cria um Device sem ligação
+      nenhuma aos anteriores, sem partilha de histórico entre eles
+    - federação, grupos, figurinhas/GIFs, QR codes, notificações push
+    - administração (papéis, moderação, ecrã de admin)
+    - empacotamento Linux (Flatpak)
+
 stack:
   frontend:
     framework: React Native (via Expo, suporta build web nativamente)
@@ -32,9 +85,11 @@ stack:
       nativa, não bloqueia o MVP (que corre em web).
   backend:
     linguagem: Python
-    framework_provavel: FastAPI (WebSockets nativos, async)
+    framework: FastAPI (WebSockets nativos, async)
   base_de_dados:
     motor: PostgreSQL
+    orm: Peewee (síncrono, chamado a partir do FastAPI via run_in_threadpool)
+      - trocado da escolha inicial (SQLAlchemy) por ser mais simples e legível
     modelo: multi-tenant lógico (isolamento por user_id, não bases separadas)
   encriptacao: >
     vodozemac (Olm 1:1 + Megolm grupos) - primo do Signal Protocol, mesmo
@@ -254,7 +309,8 @@ recuperacao_de_acesso_ao_servidor:
   caso_1_app_acessivel_mas_sem_acesso_de_owner:
     problema: és o único admin, não há ninguém para gerar o código temporário
       que os utilizadores normais usam para recuperar acesso
-    solucao: comando de recuperação que só corre localmente na máquina
+    solucao: >
+      comando de recuperação que só corre localmente na máquina
       (ex. docker exec chatapp reset-owner) - não passa pelo mecanismo normal
       de "admin aprova admin". Justificação: quem chega por SSH/fisicamente
       já é, por definição, mais confiável que um admin dentro da app

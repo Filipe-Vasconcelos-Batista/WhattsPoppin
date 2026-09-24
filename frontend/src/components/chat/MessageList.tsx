@@ -2,18 +2,22 @@ import { FlatList } from 'react-native';
 
 import { MessageBubble } from './MessageBubble';
 import { StickerBubble } from './StickerBubble';
-import { TypingIndicator } from './TypingIndicator';
 import type { ChatMessage } from '../../types/chat';
 
 type MessageListProps = {
   messages: ChatMessage[];
-  isOtherPersonTyping?: boolean;
 };
 
-export function MessageList({ messages, isOtherPersonTyping }: MessageListProps) {
+export function MessageList({ messages }: MessageListProps) {
+  // invertida: fica sempre ancorada à mensagem mais recente, junto à caixa
+  // de escrever - como em qualquer app de chat, em vez de desenhar do topo
+  // para baixo e deixar o vazio em baixo.
+  const reversedMessages = [...messages].reverse();
+
   return (
     <FlatList
-      data={messages}
+      data={reversedMessages}
+      inverted
       keyExtractor={(item) => item.id}
       renderItem={({ item }) =>
         item.kind === 'sticker' ? (
@@ -26,7 +30,6 @@ export function MessageList({ messages, isOtherPersonTyping }: MessageListProps)
           />
         )
       }
-      ListFooterComponent={isOtherPersonTyping ? <TypingIndicator /> : null}
     />
   );
 }

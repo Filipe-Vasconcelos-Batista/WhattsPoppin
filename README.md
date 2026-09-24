@@ -4,9 +4,12 @@ App de chat self-hosted federada, cifrada ponta-a-ponta. Cada pessoa ou grupo
 de amigos corre o próprio servidor; os servidores federam entre si (como
 email), sem depender de infraestrutura de terceiros.
 
-**Estado:** prova de conceito — comunicação básica de texto já funciona entre
-dois ou mais utilizadores em tempo real. Ainda sem cifra, sem persistência e
-sem registo a sério (ver [Limitações conhecidas](#limitações-conhecidas)).
+**Estado:** prova de conceito — registo, login e mensagens de texto em tempo
+real já funcionam entre vários utilizadores, testado entre dispositivos
+diferentes na mesma rede. Ainda sem cifra e sem várias peças do desenho
+final (ver [Limitações conhecidas](#limitações-conhecidas), e o estado
+completo em
+[`Documents/projeto-chat-selfhosted.yaml`](./Documents/projeto-chat-selfhosted.yaml)).
 
 ## MVP
 
@@ -35,10 +38,9 @@ Web (MVP) → mobile Android → desktop Linux. iOS ainda por posicionar nesta o
 WhattsPoppin/
 ├── frontend/    React Native + Expo (TypeScript) — npm run web|android|ios
 ├── backend/     FastAPI (Python) — .venv próprio, migrações em migrations/
-├── Documents/   mockups de design (PDF)
+├── Documents/   mockups de design (PDF) + projeto-chat-selfhosted.yaml
 ├── LICENSE
-├── README.md
-└── projeto-chat-selfhosted.yaml   decisões de arquitetura
+└── README.md
 ```
 
 ## Como correr localmente
@@ -62,37 +64,38 @@ npm install
 npm run web
 ```
 
-Abre duas abas (ou dois dispositivos na mesma rede) para testar uma conversa
-entre "Utilizador 1" e "Utilizador 2" — o registo é automático, sem ecrã de
-login (ver limitações).
+Abre a app, cria uma conta em "Criar conta" (username + password, mínimo 12
+caracteres) e repete noutra aba/dispositivo com outro username — os dois
+aparecem um ao outro na lista de conversas.
 
 ## O que já funciona
 
-- Registo automático ao abrir a app (sem formulário) — cada dispositivo fica
-  com um token no `localStorage`, guardado no servidor como `Device`.
+- Registo e login reais (username + password), com sessão retomada
+  automaticamente a partir de um token guardado no dispositivo.
 - A lista de conversas mostra todos os outros utilizadores já registados
   no servidor, mesmo sem histórico nenhum entre vocês.
 - Tocar num utilizador cria a conversa (se ainda não existir) e abre o chat.
 - Mensagens de texto em tempo real via WebSocket, entre quantos
   utilizadores/dispositivos estiverem ligados.
-- A lista actualiza-se sozinha quando alguém novo se regista, sem refresh.
+- A lista atualiza-se sozinha quando alguém novo se regista, sem refresh.
 - O WebSocket reconecta-se sozinho se o backend reiniciar.
+- Mensagens persistem no dispositivo (por utilizador), sobrevivem a um
+  refresh da página.
 
 ## Limitações conhecidas
 
 - **Sem cifra.** As mensagens viajam em texto simples — só para validar o
   transporte. A vodozemac ainda não está integrada.
-- **Sem persistência.** As mensagens vivem só em memória no cliente (estado
-  React) e passam pelo servidor sem ficarem guardadas em lado nenhum — um
-  refresh da página perde o histórico da conversa.
 - **Sem indicação fora da conversa.** Uma mensagem só aparece se tiveres o
   ecrã dessa conversa aberto — a lista não mostra pré-visualização real nem
   contagem de não lidas.
-- **Sem registo a sério.** Não há nome escolhido, password, nem
-  recuperação de conta — é "quem chega primeiro fica com o próximo número".
-- **Um só dispositivo por utilizador**, sem multi-dispositivo.
+- **Sem estados de mensagem.** Não há pending/delivered/read, nem fila de
+  entrega quando o destinatário está offline — a mensagem perde-se.
+- **Sem alcunhas nem deteção de ambiguidade de nomes.**
+- **Um só dispositivo por utilizador**, sem multi-dispositivo a sério.
+- **Registo aberto**, sem código de convite nem aprovação de admin.
 - **Só localhost/rede local.** Testado só dentro de casa; ver
-  `projeto-chat-selfhosted.yaml` para o desenho de produção
+  `Documents/projeto-chat-selfhosted.yaml` para o desenho de produção
   (Docker, Caddy, DNS dinâmico).
 
 ## Como correr os linters e testes
@@ -120,6 +123,6 @@ pytest -q         # testes
 
 ## Documentação
 
-Todas as decisões de arquitetura, o porquê de cada uma e o que ainda falta
-decidir estão em
-[`projeto-chat-selfhosted.yaml`](./projeto-chat-selfhosted.yaml).
+Todas as decisões de arquitetura, o porquê de cada uma, o estado actual da
+implementação e o que ainda falta estão em
+[`Documents/projeto-chat-selfhosted.yaml`](./Documents/projeto-chat-selfhosted.yaml).

@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -11,19 +11,16 @@ import { colors } from '../theme/colors';
 export default function ConversationsScreen() {
   const identity = useIdentity();
 
+  if (identity.loading) return <LoadingState />;
+  if (!identity.authenticated) return <Redirect href="/login" />;
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
         <ConversationsHeader />
       </View>
 
-      {identity.loading ? (
-        <LoadingState />
-      ) : identity.error ? (
-        <View style={styles.center}>
-          <Text style={styles.error}>{identity.error}</Text>
-        </View>
-      ) : identity.otherUsers.length === 0 ? (
+      {identity.otherUsers.length === 0 ? (
         <View style={styles.center}>
           <Text style={styles.waitingTitle}>És o {identity.displayName}</Text>
           <Text style={styles.waitingSubtitle}>
@@ -78,10 +75,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     paddingHorizontal: 32,
-  },
-  error: {
-    color: '#F87171',
-    fontSize: 14,
   },
   waitingTitle: {
     color: colors.textPrimary,
