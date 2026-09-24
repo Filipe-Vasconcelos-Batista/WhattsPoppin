@@ -20,6 +20,7 @@ export type ConversationSummary = {
 export type ChatMessage =
   | {
       id: string;
+      conversationId: string;
       kind: 'text';
       authorId: 'me' | string;
       text: string;
@@ -27,6 +28,7 @@ export type ChatMessage =
     }
   | {
       id: string;
+      conversationId: string;
       kind: 'sticker';
       authorId: 'me' | string;
       timeLabel: string;

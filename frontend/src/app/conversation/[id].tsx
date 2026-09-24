@@ -1,26 +1,51 @@
 import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AmbiguityHint } from '../../components/chat/AmbiguityHint';
+import { getOrCreateConversation } from '../../api/conversations';
 import { ChatHeader } from '../../components/chat/ChatHeader';
+import { LoadingState } from '../../components/LoadingState';
 import { MessageInputBar } from '../../components/chat/MessageInputBar';
 import { MessageList } from '../../components/chat/MessageList';
+import { useIdentity } from '../../context/IdentityContext';
 import { colors } from '../../theme/colors';
-import { mockContactsById, mockMessagesByConversation } from '../../data/mockData';
+import type { Contact } from '../../types/chat';
 
 export default function ConversationScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const contact = mockContactsById[id];
-  const messages = mockMessagesByConversation[id] ?? [];
+  const { id: otherUserId } = useLocalSearchParams<{ id: string }>();
+  const identity = useIdentity();
+  const [conversationId, setConversationId] = useState<string | null>(null);
 
-  if (!contact) return null;
+  useEffect(() => {
+    if (!identity.userId) return;
+    let cancelled = false;
+
+    getOrCreateConversation(identity.userId, otherUserId).then((id) => {
+      if (!cancelled) setConversationId(id);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [identity.userId, otherUserId]);
+
+  const otherUser = identity.otherUsers.find((user) => user.user_id === otherUserId);
+
+  if (!otherUser || !conversationId) return <LoadingState />;
+
+  const contact: Contact = {
+    id: otherUser.user_id,
+    displayName: otherUser.display_name,
+    identifier: otherUser.user_id,
+  };
+
+  const messages = identity.messages.filter((message) => message.conversationId === conversationId);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
         <ChatHeader contact={contact} onBackPress={() => router.back()} />
-        {contact.isAmbiguous ? <AmbiguityHint /> : null}
       </View>
 
       <KeyboardAvoidingView
@@ -29,11 +54,11 @@ export default function ConversationScreen() {
         keyboardVerticalOffset={12}
       >
         <View style={styles.messages}>
-          <MessageList messages={messages} isOtherPersonTyping />
+          <MessageList messages={messages} />
         </View>
 
         <View style={styles.inputBar}>
-          <MessageInputBar />
+          <MessageInputBar onSend={(text) => identity.sendMessage(conversationId, text)} />
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -49,7 +74,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 12,
-    gap: 10,
     borderBottomWidth: 1,
     borderBottomColor: colors.divider,
   },
