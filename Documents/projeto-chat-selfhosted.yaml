@@ -78,11 +78,11 @@ stack:
       notificações D-Bus nativas e empacotamento Flatpak (perdidos ao usar
       só a versão web).
     cifra_em_mobile_nativo: >
-      vodozemac usa WASM, que o motor Hermes do React Native NÃO suporta
-      (WASM só corre no browser/web). Plano: módulo nativo próprio via JSI,
-      ligando o núcleo Rust da vodozemac ao RN, compilado à parte para
-      Android e iOS - só necessário quando se avançar para build mobile
-      nativa, não bloqueia o MVP (que corre em web).
+      RESOLVIDO pela mudança de biblioteca (ver stack.encriptacao) - a
+      implementação própria do Double Ratchet usa @noble/curves,hashes,
+      ciphers, que são JavaScript/TypeScript puro sem WASM. Corre
+      exactamente da mesma forma no Hermes (mobile) e no browser (web),
+      sem precisar de nenhuma ponte nativa em Rust/JSI.
   backend:
     linguagem: Python
     framework: FastAPI (WebSockets nativos, async)
@@ -92,11 +92,17 @@ stack:
       - trocado da escolha inicial (SQLAlchemy) por ser mais simples e legível
     modelo: multi-tenant lógico (isolamento por user_id, não bases separadas)
   encriptacao: >
-    vodozemac (Olm 1:1 + Megolm grupos) - primo do Signal Protocol, mesmo
-    Double Ratchet. Escolhida em vez da libsignal oficial porque é feita para
-    uso por terceiros (API estável, documentada, bindings WASM/JS e Python),
-    enquanto a libsignal se declara "não suportada para uso fora do Signal,
-    API pode mudar sem aviso". Servidor nunca vê conteúdo.
+    DECISÃO REVISTA (Set 2026): a vodozemac foi abandonada como escolha -
+    os seus bindings de JavaScript estão todos parados (o oficial
+    explicitamente arquivado, os forks da comunidade sem updates há mais
+    de um ano). Implementação própria do Double Ratchet + X3DH (as
+    especificações publicadas do Signal), em cima de primitivos JS
+    auditados (@noble/curves, @noble/hashes, @noble/ciphers) - nunca
+    inventamos cifra nossa, só a lógica de encadeamento de chaves.
+    Vantagem: bibliotecas em JS puro, sem WASM, resolvem também o
+    problema já identificado de correr em mobile (Hermes). Plano
+    detalhado, com fases e ficheiros concretos, em
+    Documents/plano-cifra-ponta-a-ponta.md. Servidor nunca vê conteúdo.
   infraestrutura:
     hosting: máquina física em casa, container Docker
     reverse_proxy: Caddy (HTTPS automático via Let's Encrypt)
