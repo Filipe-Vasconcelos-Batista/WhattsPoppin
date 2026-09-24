@@ -60,6 +60,7 @@ uvicorn app.main:app --reload
 
 # 3. Frontend, noutro terminal
 cd frontend
+nvm use          # fixa o Node deste projecto (24, ver .nvmrc)
 npm install
 npm run web
 ```
