@@ -4,3 +4,4 @@ python-dotenv>=1.0
 peewee>=3.17
 psycopg2-binary>=2.9
 peewee-migrate>=1.13
+bcrypt>=4.2

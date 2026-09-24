@@ -4,8 +4,8 @@ repositório para o desenho completo (federação, cifra, retenção, etc.)."""
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.auth import router as auth_router
 from app.api.conversations import router as conversations_router
-from app.api.identity import router as identity_router
 from app.api.ws import router as ws_router
 
 app = FastAPI(title="WatsPoppin", version="0.0.1")
@@ -19,7 +19,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(identity_router)
+app.include_router(auth_router)
 app.include_router(conversations_router)
 app.include_router(ws_router)
 
