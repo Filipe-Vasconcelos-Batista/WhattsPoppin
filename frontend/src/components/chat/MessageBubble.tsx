@@ -1,15 +1,32 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { colors, gradients } from '../../theme/colors';
+import type { MessageStatus } from '../../types/chat';
 
 type MessageBubbleProps = {
   text: string;
   timeLabel: string;
   isMine: boolean;
+  status?: MessageStatus;
 };
 
-export function MessageBubble({ text, timeLabel, isMine }: MessageBubbleProps) {
+const STATUS_ICON: Record<MessageStatus, keyof typeof Ionicons.glyphMap> = {
+  pending: 'time-outline',
+  sent: 'checkmark',
+  delivered: 'checkmark-done',
+  read: 'checkmark-done',
+};
+
+const STATUS_LABEL: Record<MessageStatus, string> = {
+  pending: 'Por enviar',
+  sent: 'Enviada',
+  delivered: 'Entregue',
+  read: 'Lida',
+};
+
+export function MessageBubble({ text, timeLabel, isMine, status }: MessageBubbleProps) {
   return (
     <View style={[styles.wrapper, isMine ? styles.wrapperMine : styles.wrapperTheirs]}>
       {isMine ? (
@@ -26,7 +43,17 @@ export function MessageBubble({ text, timeLabel, isMine }: MessageBubbleProps) {
           <Text style={styles.text}>{text}</Text>
         </View>
       )}
-      <Text style={[styles.time, isMine ? styles.timeMine : styles.timeTheirs]}>{timeLabel}</Text>
+      <View style={[styles.meta, isMine ? styles.metaMine : styles.metaTheirs]}>
+        <Text style={styles.time}>{timeLabel}</Text>
+        {isMine && status ? (
+          <Ionicons
+            name={STATUS_ICON[status]}
+            size={14}
+            color={status === 'read' ? colors.accentCyan : colors.textMuted}
+            accessibilityLabel={STATUS_LABEL[status]}
+          />
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -57,15 +84,20 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 21,
   },
-  time: {
-    fontSize: 11,
+  meta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     marginTop: 4,
   },
-  timeMine: {
-    color: colors.textMuted,
-    textAlign: 'right',
+  metaMine: {
+    justifyContent: 'flex-end',
   },
-  timeTheirs: {
+  metaTheirs: {
+    justifyContent: 'flex-start',
+  },
+  time: {
+    fontSize: 11,
     color: colors.textMuted,
   },
 });

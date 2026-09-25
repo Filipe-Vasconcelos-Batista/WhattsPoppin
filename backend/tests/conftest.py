@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 
 import pytest
 from dotenv import load_dotenv
+from fastapi.testclient import TestClient
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(BACKEND_DIR.parent / ".env")
@@ -46,3 +47,15 @@ def _prepare_test_database() -> Iterator[None]:
         quoted = ", ".join(f'"{table}"' for table in tables)
         db.execute_sql(f"TRUNCATE {quoted} RESTART IDENTITY CASCADE")
     yield
+
+
+# Fora de um `with`, o TestClient abre cada WebSocket no seu próprio event
+# loop, e uma mensagem enviada do handler de um socket para outro nunca
+# acorda quem está à espera (bloqueia para sempre). Dentro do `with` todos
+# partilham um só loop, como no uvicorn.
+@pytest.fixture
+def ws_client() -> Iterator[TestClient]:
+    from app.main import app
+
+    with TestClient(app) as shared:
+        yield shared

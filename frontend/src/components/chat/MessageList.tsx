@@ -27,6 +27,7 @@ export function MessageList({ messages }: MessageListProps) {
             text={item.text}
             timeLabel={item.timeLabel}
             isMine={item.authorId === 'me'}
+            status={item.status}
           />
         )
       }
