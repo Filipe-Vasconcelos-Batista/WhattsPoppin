@@ -116,7 +116,7 @@ chegarmos à Fase 2.
     (`frontend/.nvmrc`, `nvm use`), independente do Node global da
     máquina, para poder usar o Vitest mais recente.
 
-- [x] **Fase 2 - Chaves e publicação** (completa, testada, **por commitar**)
+- [x] **Fase 2 - Chaves e publicação** (completa, testada, **commitada**)
   - Migração `004_add_e2e_keys` (campos no `Device` + tabela
     `OneTimePrekey`) - já corrida contra a BD de dev
   - `POST /devices/{id}/keys` e `GET /devices/{id}/prekey-bundle` no
@@ -152,13 +152,55 @@ chegarmos à Fase 2.
     ao envio de mensagens, quem envia terá de cifrar **uma vez por
     dispositivo destinatário**, não uma vez por conversa - relevante assim
     que multi-dispositivo deixar de ser "um só dispositivo por utilizador"
+  - **Teste manual confirmado (2026-09-25):** conta criada com
+    backend (`--host 0.0.0.0`, exposto na LAN) + frontend a correr; no
+    Postgres, o `Device` ficou com `identity_key`/`signed_prekey`
+    preenchidos e exactamente 20 linhas em `one_time_prekeys`; duas
+    chamadas seguidas a `GET /devices/{id}/prekey-bundle` devolveram
+    `one_time_prekey_id` diferentes (233364501, depois 288622942) e a
+    contagem de OPKs desceu de 20 para 18, confirmando que cada OPK é
+    consumida uma única vez, sem reutilização
+  - **Gap identificado, não bloqueia a Fase 3:** quando as OPKs de um
+    device se esgotam, `get_prekey_bundle()` devolve o bundle na mesma
+    mas com `one_time_prekey_id`/`one_time_prekey` a `null` - válido
+    segundo a spec do X3DH (OPK é opcional, cai-se para 3 DH em vez de
+    4). Não existe ainda nenhum mecanismo que reponha OPKs
+    automaticamente quando ficam poucas - fica para uma fase futura,
+    fora do âmbito da Fase 3/4/5
 
-- [ ] **Fase 3 - X3DH**
-  - `src/crypto/x3dh.ts` - implementar `initiateSession()` (Alice: busca o
-    bundle, faz os 4 DH, deriva SK) e `receiveInitialMessage()` (Bob:
-    reconstrói o SK a partir da primeira mensagem recebida)
-  - Teste: simular Alice e Bob no mesmo teste, confirmar que chegam ao
-    mesmo SK
+- [x] **Fase 3 - X3DH** (completa, testada, **por commitar**)
+  - `src/crypto/x3dh.ts` - `initiateSession()` (Alice) e
+    `receiveInitialMessage()` (Bob), separados em núcleo puro
+    (`deriveInitiatorSharedKey`/`deriveResponderSharedKey`, sem I/O,
+    testado directamente) + wrappers de I/O finos por cima
+  - Testes em `x3dh.test.ts`: Alice e Bob chegam à mesma SK, com OPK e sem
+    (pool esgotado); SK com/sem OPK são diferentes (DH4 participa mesmo);
+    assinatura da SPK adulterada é rejeitada; OPK referida mas já
+    consumida é rejeitada; sessões diferentes dão SKs diferentes; e um
+    teste de integração dos wrappers via `initiateSession`/
+    `receiveInitialMessage` com AsyncStorage e API mockados
+  - Decisões tomadas pelo caminho:
+    - **A IK é Ed25519** (decisão já tomada na Fase 2, reutilizada para
+      assinar a SPK), mas o X3DH precisa de X25519 para o DH. Resolvido
+      com a conversão birracional Edwards→Montgomery que o
+      `@noble/curves` já expõe (`ed25519.utils.toMontgomery` /
+      `toMontgomerySecret`) - novos primitivos `edPublicKeyToX25519` /
+      `edPrivateKeyToX25519` em `primitives.ts`
+    - **Prefixo `F`** (32 bytes `0xFF`) antes dos DHs concatenados no KDF,
+      tal como a spec do X3DH recomenda especificamente para o caso de a
+      identity key ser reutilizada fora do DH (aqui: para assinar a SPK)
+    - Novo primitivo `kdfX3dh` em `primitives.ts` (HKDF-SHA256, salt fixo
+      de zeros, info próprio) - distinto de `hkdfRk`, que é específico do
+      Double Ratchet (1 DH de entrada, 2 saídas)
+    - `deriveInitiatorSharedKey` verifica sempre a assinatura da SPK de
+      Bob antes de fazer qualquer DH (`SignedPrekeySignatureError` se
+      falhar) - sem isto um servidor comprometido podia trocar a SPK e
+      fazer MITM
+    - `consumeOneTimePrekey` novo em `keys.ts` (lê + apaga a privada da
+      OPK usada do storage local) - preenche o gap que a própria Fase 2
+      já tinha deixado assinalado em comentário
+    - `fetchPrekeyBundle` novo em `api/devices.ts` - sem alterações ao
+      backend, o endpoint da Fase 2 já devolve tudo o que é preciso
 
 - [ ] **Fase 4 - Double Ratchet**
   - `src/crypto/doubleRatchet.ts` - estado completo (DHs, DHr, RK, CKs,
@@ -177,15 +219,12 @@ chegarmos à Fase 2.
 
 ## Onde ficámos
 
-**Estado em 2026-09-25:** Fase 1 e Fase 2 completas. Código escrito,
-lint/typecheck/testes do frontend a passar, `ruff`/`mypy` do backend a
-passar, migração `004_add_e2e_keys` já corrida contra a BD de dev, e
-`pytest -q` a dar 5 passed. **Falta:** o teste manual ponta-a-ponta (criar
-conta com backend+frontend a correr, confirmar no Postgres que o `Device`
-fica com `identity_key`/`signed_prekey` preenchidos e 20 linhas em
-`one_time_prekeys`, e que duas chamadas seguidas a
-`GET /devices/{id}/prekey-bundle` devolvem `one_time_prekey_id`
-diferentes) e o **commit** - nada da Fase 2 está commitado ainda.
+**Estado em 2026-09-25:** Fase 1, Fase 2 e Fase 3 completas e testadas.
+`npm run test` (51 testes), `npx tsc --noEmit` e `npx expo lint` todos
+limpos no frontend. **Falta:** o commit - nada da Fase 3 está commitado
+ainda (a Fase 2 já foi commitada entretanto).
 
-Próxima sessão: fazer o teste manual acima, commitar a Fase 2, e depois
-avançar para a **Fase 3 - X3DH** (`src/crypto/x3dh.ts`).
+Próxima sessão: commitar a Fase 3, e depois avançar para a
+**Fase 4 - Double Ratchet** (`src/crypto/doubleRatchet.ts` +
+`src/crypto/sessionStore.ts`), usando a SK desta fase como root key
+inicial.

@@ -1,4 +1,4 @@
-import { x25519 } from '@noble/curves/ed25519.js';
+import { x25519, ed25519 } from '@noble/curves/ed25519.js';
 import { hkdf } from '@noble/hashes/hkdf.js';
 import { hmac } from '@noble/hashes/hmac.js';
 import { sha256 } from '@noble/hashes/sha2.js';
@@ -29,6 +29,20 @@ export function dh(privateKey: Uint8Array, publicKey: Uint8Array): Uint8Array {
   assertLength(privateKey, KEY_LENGTH, 'privateKey');
   assertLength(publicKey, KEY_LENGTH, 'publicKey');
   return x25519.getSharedSecret(privateKey, publicKey);
+}
+
+// Conversão Edwards -> Montgomery (Ed25519 -> X25519). A identity key deste
+// app é Ed25519 (reutilizada para assinar a signed prekey), mas o X3DH
+// precisa de X25519 para fazer DH - este é o mapa birracional padrão que
+// permite usar a mesma chave para as duas coisas.
+export function edPublicKeyToX25519(edPublicKey: Uint8Array): Uint8Array {
+  assertLength(edPublicKey, KEY_LENGTH, 'edPublicKey');
+  return ed25519.utils.toMontgomery(edPublicKey);
+}
+
+export function edPrivateKeyToX25519(edPrivateKey: Uint8Array): Uint8Array {
+  assertLength(edPrivateKey, KEY_LENGTH, 'edPrivateKey');
+  return ed25519.utils.toMontgomerySecret(edPrivateKey);
 }
 
 export interface RootKeyUpdate {
@@ -63,6 +77,13 @@ export function hmacCk(ck: Uint8Array): ChainKeyUpdate {
     messageKey: hmac(sha256, ck, CK_MESSAGE_KEY_INPUT),
     chainKey: hmac(sha256, ck, CK_NEXT_CHAIN_KEY_INPUT),
   };
+}
+
+const KDF_X3DH_INFO = utf8ToBytes('WhattsPoppin-X3DH-SK-v1');
+const KDF_X3DH_SALT = new Uint8Array(KEY_LENGTH);
+
+export function kdfX3dh(ikm: Uint8Array): Uint8Array {
+  return hkdf(sha256, ikm, KDF_X3DH_SALT, KDF_X3DH_INFO, KEY_LENGTH);
 }
 
 // Formato do output: nonce(12) || ciphertext+tag(plaintext.length + 16)

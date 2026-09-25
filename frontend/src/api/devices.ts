@@ -36,3 +36,21 @@ export async function publishDeviceKeys(
     throw new Error(data?.detail ?? `Erro do servidor (${response.status})`);
   }
 }
+
+export type PrekeyBundleResponse = {
+  identity_key: string | null;
+  signed_prekey: string | null;
+  signed_prekey_signature: string | null;
+  signed_prekey_id: number | null;
+  one_time_prekey_id: number | null;
+  one_time_prekey: string | null;
+};
+
+export async function fetchPrekeyBundle(deviceId: string): Promise<PrekeyBundleResponse> {
+  const response = await fetch(`${API_URL}/devices/${deviceId}/prekey-bundle`);
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.detail ?? `Erro do servidor (${response.status})`);
+  }
+  return response.json();
+}

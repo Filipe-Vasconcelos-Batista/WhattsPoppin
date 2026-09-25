@@ -8,6 +8,7 @@
 // herdada das implementações constant-time das @noble/*).
 
 import { describe, it, expect } from 'vitest';
+import { ed25519 } from '@noble/curves/ed25519.js';
 import {
   KEY_LENGTH,
   generateKeyPair,
@@ -16,6 +17,9 @@ import {
   hmacCk,
   aeadEncrypt,
   aeadDecrypt,
+  edPublicKeyToX25519,
+  edPrivateKeyToX25519,
+  kdfX3dh,
 } from './primitives';
 
 describe('generateKeyPair', () => {
@@ -53,6 +57,56 @@ describe('dh', () => {
     const oversized = new Uint8Array([...publicKey, 0]);
     expect(() => dh(privateKey.slice(0, 31), publicKey)).toThrow();
     expect(() => dh(privateKey, oversized)).toThrow();
+  });
+});
+
+describe('edPublicKeyToX25519 / edPrivateKeyToX25519', () => {
+  it('produces 32-byte outputs', () => {
+    const ik = ed25519.keygen();
+    expect(edPublicKeyToX25519(ik.publicKey).length).toBe(KEY_LENGTH);
+    expect(edPrivateKeyToX25519(ik.secretKey).length).toBe(KEY_LENGTH);
+  });
+
+  it('is deterministic for the same input', () => {
+    const ik = ed25519.keygen();
+    expect(edPublicKeyToX25519(ik.publicKey)).toEqual(edPublicKeyToX25519(ik.publicKey));
+    expect(edPrivateKeyToX25519(ik.secretKey)).toEqual(edPrivateKeyToX25519(ik.secretKey));
+  });
+
+  it('lets an Ed25519 identity key agree on a DH with a plain X25519 peer', () => {
+    const edKeyPair = ed25519.keygen();
+    const xPeer = generateKeyPair();
+
+    const edAsX25519Private = edPrivateKeyToX25519(edKeyPair.secretKey);
+    const edAsX25519Public = edPublicKeyToX25519(edKeyPair.publicKey);
+
+    const sharedFromEdSide = dh(edAsX25519Private, xPeer.publicKey);
+    const sharedFromPeerSide = dh(xPeer.privateKey, edAsX25519Public);
+    expect(sharedFromEdSide).toEqual(sharedFromPeerSide);
+  });
+
+  it('rejects inputs with the wrong length', () => {
+    const ik = ed25519.keygen();
+    expect(() => edPublicKeyToX25519(ik.publicKey.slice(0, 31))).toThrow();
+    expect(() => edPrivateKeyToX25519(ik.secretKey.slice(0, 31))).toThrow();
+  });
+});
+
+describe('kdfX3dh', () => {
+  it('returns 32 bytes', () => {
+    const ikm = new Uint8Array(96).fill(5);
+    expect(kdfX3dh(ikm).length).toBe(KEY_LENGTH);
+  });
+
+  it('is deterministic for the same input', () => {
+    const ikm = new Uint8Array(96).fill(5);
+    expect(kdfX3dh(ikm)).toEqual(kdfX3dh(ikm));
+  });
+
+  it('produces different output for different input', () => {
+    const a = new Uint8Array(96).fill(5);
+    const b = new Uint8Array(96).fill(6);
+    expect(kdfX3dh(a)).not.toEqual(kdfX3dh(b));
   });
 });
 

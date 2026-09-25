@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ed25519 } from '@noble/curves/ed25519.js';
 
 import { generateKeyPair, type KeyPair } from './primitives';
-import { bytesToBase64 } from './encoding';
+import { bytesToBase64, base64ToBytes } from './encoding';
 import { publishDeviceKeys } from '../api/devices';
 
 export const ONE_TIME_PREKEY_BATCH_SIZE = 20;
@@ -97,6 +97,21 @@ export async function storeDeviceKeys(deviceId: string, keys: DeviceKeyMaterial)
     oneTimePrekeys: [...(existing?.oneTimePrekeys ?? []), ...newOneTimePrekeys],
   };
   await AsyncStorage.setItem(storageKey(deviceId), JSON.stringify(stored));
+}
+
+export async function consumeOneTimePrekey(
+  deviceId: string,
+  keyId: number,
+): Promise<Uint8Array | null> {
+  const stored = await loadDeviceKeys(deviceId);
+  if (!stored) return null;
+
+  const index = stored.oneTimePrekeys.findIndex((opk) => opk.keyId === keyId);
+  if (index === -1) return null;
+
+  const [match] = stored.oneTimePrekeys.splice(index, 1);
+  await AsyncStorage.setItem(storageKey(deviceId), JSON.stringify(stored));
+  return base64ToBytes(match.privateKey);
 }
 
 // Gera um lote novo, guarda as privadas localmente (merge) e publica as

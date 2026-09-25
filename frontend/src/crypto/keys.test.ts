@@ -4,6 +4,7 @@ import {
   generateDeviceKeys,
   storeDeviceKeys,
   loadDeviceKeys,
+  consumeOneTimePrekey,
   ONE_TIME_PREKEY_BATCH_SIZE,
 } from './keys';
 
@@ -84,5 +85,44 @@ describe('storeDeviceKeys / loadDeviceKeys', () => {
     expect(loaded!.oneTimePrekeys.length).toBe(
       first.oneTimePrekeys.length + second.oneTimePrekeys.length,
     );
+  });
+});
+
+describe('consumeOneTimePrekey', () => {
+  it('returns the private key and removes it from storage', async () => {
+    const deviceId = 'device-789';
+    const keys = generateDeviceKeys();
+    await storeDeviceKeys(deviceId, keys);
+    const target = keys.oneTimePrekeys[0];
+
+    const consumed = await consumeOneTimePrekey(deviceId, target.keyId);
+    expect(consumed).toEqual(target.keyPair.privateKey);
+
+    const loaded = await loadDeviceKeys(deviceId);
+    expect(loaded!.oneTimePrekeys.some((opk) => opk.keyId === target.keyId)).toBe(false);
+    expect(loaded!.oneTimePrekeys.length).toBe(keys.oneTimePrekeys.length - 1);
+  });
+
+  it('leaves other one-time prekeys untouched', async () => {
+    const deviceId = 'device-790';
+    const keys = generateDeviceKeys();
+    await storeDeviceKeys(deviceId, keys);
+    const [target, ...rest] = keys.oneTimePrekeys;
+
+    await consumeOneTimePrekey(deviceId, target.keyId);
+
+    const loaded = await loadDeviceKeys(deviceId);
+    const remainingIds = loaded!.oneTimePrekeys.map((opk) => opk.keyId).sort();
+    expect(remainingIds).toEqual(rest.map((opk) => opk.keyId).sort());
+  });
+
+  it('returns null for an unknown key id', async () => {
+    const deviceId = 'device-791';
+    await storeDeviceKeys(deviceId, generateDeviceKeys());
+    expect(await consumeOneTimePrekey(deviceId, 999_999_999)).toBeNull();
+  });
+
+  it('returns null when nothing is stored for the device', async () => {
+    expect(await consumeOneTimePrekey('unknown-device', 1)).toBeNull();
   });
 });
