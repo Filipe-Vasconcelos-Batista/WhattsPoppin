@@ -40,8 +40,7 @@ estado_de_implementacao:
       assinada e 20 OPKs; a primeira mensagem abre sessão X3DH, depois
       Double Ratchet (chave nova por mensagem). Quem envia cifra um
       envelope por dispositivo do destinatário, o servidor entrega a cada
-      um só o seu e nunca vê o texto. Detalhe e decisões em
-      Documents/plano-cifra-ponta-a-ponta.md
+      um só o seu e nunca vê o texto. Desenho e decisões na secção cifra
     - pytest numa BD própria (TEST_DATABASE_URL, nome tem de acabar em
       _test) - nunca toca na BD de dev
     - fila offline no servidor (tabela pending_messages) - uma linha por
@@ -75,10 +74,7 @@ estado_de_implementacao:
     - proteger os dados no dispositivo - hoje, na web, mensagens E chaves
       privadas estão no localStorage sem cifra. Requisito - poder usar a
       web em qualquer máquina, incluindo partilhadas. Desenho (fora do
-      MVP) em Documents/plano-cifra-ponta-a-ponta.md, secção "Futuro" -
-      armazenamento cifrado único, chave no Keychain/Keystore no mobile,
-      derivada de PIN (Argon2id) na web, logout que limpa tudo e desativa
-      o device
+      MVP) em cifra.protecao_dos_dados_no_dispositivo
     - nome de exibição editável, alcunhas, deteção de ambiguidade
     - backup e restauro de chaves (praticamente tudo, depende da cifra)
     - multi-dispositivo - hoje cada login novo cria um Device sem ligação
@@ -101,7 +97,7 @@ stack:
       notificações D-Bus nativas e empacotamento Flatpak (perdidos ao usar
       só a versão web).
     cifra_em_mobile_nativo: >
-      RESOLVIDO pela mudança de biblioteca (ver stack.encriptacao) - a
+      RESOLVIDO pela mudança de biblioteca (ver secção cifra) - a
       implementação própria do Double Ratchet usa @noble/curves,hashes,
       ciphers, que são JavaScript/TypeScript puro sem WASM. Corre
       exactamente da mesma forma no Hermes (mobile) e no browser (web),
@@ -115,24 +111,135 @@ stack:
       - trocado da escolha inicial (SQLAlchemy) por ser mais simples e legível
     modelo: multi-tenant lógico (isolamento por user_id, não bases separadas)
   encriptacao: >
-    DECISÃO REVISTA (Set 2026): a vodozemac foi abandonada como escolha -
-    os seus bindings de JavaScript estão todos parados (o oficial
-    explicitamente arquivado, os forks da comunidade sem updates há mais
-    de um ano). Implementação própria do Double Ratchet + X3DH (as
-    especificações publicadas do Signal), em cima de primitivos JS
-    auditados (@noble/curves, @noble/hashes, @noble/ciphers) - nunca
-    inventamos cifra nossa, só a lógica de encadeamento de chaves.
-    Vantagem: bibliotecas em JS puro, sem WASM, resolvem também o
-    problema já identificado de correr em mobile (Hermes). Plano
-    detalhado, com fases e ficheiros concretos, em
-    Documents/plano-cifra-ponta-a-ponta.md. Servidor nunca vê conteúdo.
-    ESTADO (Set 2026): implementado e ligado ao envio/receção em 1:1.
+    X3DH + Double Ratchet próprios (specs do Signal) sobre @noble/curves,
+    @noble/hashes e @noble/ciphers. O servidor nunca vê conteúdo. Desenho,
+    decisões e limitações na secção cifra.
   infraestrutura:
     hosting: máquina física em casa, container Docker
     reverse_proxy: Caddy (HTTPS automático via Let's Encrypt)
     dns_dinamico: DuckDNS ou Cloudflare
     portas_abertas: [443, 80]
     ssh: só via VPN/LAN, nunca exposto publicamente
+
+cifra:
+  porque_implementacao_propria: >
+    A vodozemac (Olm/Megolm) foi a escolha inicial, mas os bindings de
+    JavaScript estão todos parados - o oficial arquivado, os forks da
+    comunidade sem updates há mais de um ano, e a única opção mantida é o
+    OlmMachine inteiro do Matrix, preso aos conceitos do protocolo deles.
+    Implementámos X3DH + Double Ratchet seguindo à risca as especificações
+    do Signal, em cima de primitivos auditados (@noble/curves,
+    @noble/hashes, @noble/ciphers - JS puro, sem WASM, corre igual no
+    Hermes e no browser). Nunca inventamos cifra, só o encadeamento de
+    chaves.
+  especificacoes:
+    - https://signal.org/docs/specifications/x3dh/
+    - https://signal.org/docs/specifications/doubleratchet/
+  primitivos: >
+    X25519 para DH; HKDF-SHA256 para o KDF_RK do Double Ratchet e para o KDF
+    do X3DH (cada um com o seu info, para separação de domínio);
+    HMAC-SHA256 para o KDF_CK; ChaCha20-Poly1305 como AEAD, com nonce
+    aleatório de 12 bytes. Tudo em frontend/src/crypto/primitives.ts.
+  chaves_por_dispositivo: >
+    Identity key (IK, Ed25519), signed prekey (SPK, X25519, assinada pela IK)
+    e 20 one-time prekeys (OPK, X25519, key_id aleatório de 32 bits). Geradas
+    no registo e no login, partes públicas publicadas no servidor, privadas
+    só no dispositivo. O servidor entrega cada OPK uma única vez e apaga-a.
+  sessoes: >
+    Uma sessão por par de dispositivos (o meu device, o device do outro),
+    nunca por conversa nem por utilizador. Quem envia cifra um envelope por
+    cada device do destinatário e o servidor entrega a cada um só o seu.
+  decisoes:
+    ik_ed25519_reutilizada_para_dh: >
+      A IK é Ed25519 (assina a SPK) e é convertida para X25519 (mapa
+      Edwards para Montgomery) para os DH do X3DH. Como a spec recomenda
+      para este caso de reuso de chave, o input do KDF leva o prefixo F
+      (32 bytes 0xFF).
+    verificacao_da_spk: >
+      Quem inicia a sessão verifica sempre a assinatura da SPK antes de
+      qualquer DH - sem isto, um servidor comprometido podia trocar a SPK.
+    associated_data: >
+      AD = IK_A || IK_B (do X3DH). Cada mensagem autentica AD || cabeçalho,
+      e o cabeçalho tem 40 bytes fixos (dh 32, pn 4, n 4, big-endian) - por
+      isso adulterar o cabeçalho faz a decifra falhar.
+    par_ratchet_inicial_de_bob: é a SPK dele, como a spec manda
+    preludio_repetido: >
+      Alice põe o prelúdio X3DH em todas as mensagens até decifrar a
+      primeira resposta de Bob, como o Signal recomenda - perder a primeira
+      mensagem não impede a seguinte de abrir a sessão. Bob distingue
+      "repetição" de "sessão nova" pela chave efémera de Alice.
+    opk_so_gasta_depois_de_decifrar: >
+      A OPK só é apagada depois de a primeira mensagem decifrar, para uma
+      mensagem adulterada não a queimar.
+    estado_imutavel: >
+      Cada operação do ratchet devolve um estado novo; se a decifra falhar o
+      anterior fica intacto, e só se grava depois de sucesso.
+    fila_em_serie: >
+      Todas as operações de cifra e decifra passam por uma fila, para duas
+      mensagens seguidas não gravarem a mesma sessão ao mesmo tempo.
+    max_skip: >
+      No máximo 1000 chaves saltadas por cadeia, e os contadores do
+      cabeçalho são validados.
+    cifrar_uma_vez: >
+      A outbox de quem envia guarda os envelopes já cifrados; um reenvio
+      manda os mesmos bytes e o ratchet não avança duas vezes.
+  limitacoes_conhecidas:
+    - >
+      Sem verificação de identidade (número de segurança / QR, ver
+      qr_codes). Protege contra quem escuta a rede, mas não contra um
+      servidor comprometido que troque as chaves de alguém. É a lacuna mais
+      importante.
+    - Dados no dispositivo sem proteção própria (ver protecao_dos_dados_no_dispositivo)
+    - >
+      Inícios de sessão simultâneos podem perder as mensagens que se cruzam
+      (falta um arquivo de sessões).
+    - >
+      Sem reposição automática de OPKs; esgotadas, as sessões novas perdem o
+      DH4 (válido pela spec, mas mais fraco).
+    - >
+      Sem rotação da SPK. Como a SPK é também o primeiro par ratchet de Bob,
+      a rotação tem de guardar a privada antiga durante um período.
+    - Sem limite global às chaves saltadas guardadas (MKSKIPPED)
+    - Cada login cria um device novo, e quem envia também cifra para os antigos
+    - >
+      Implementação própria - recomenda-se uma revisão de segurança externa
+      antes de uso real.
+  protecao_dos_dados_no_dispositivo:
+    estado: desenho, fora do MVP
+    problema: >
+      Guardar as mensagens decifradas no dispositivo é o normal (o WhatsApp e
+      o Signal também o fazem); a diferença é que eles protegem esse
+      armazenamento. Aqui, na web, as mensagens E as chaves privadas estão no
+      localStorage em claro - legíveis por qualquer script na página (XSS) e
+      por quem aceda ao perfil do browser, e ficam lá depois de fechar a app.
+    requisito: poder usar a web em qualquer máquina, incluindo partilhadas
+    desenho:
+      - >
+        Um único módulo de armazenamento cifrado (ex. storage/vault.ts) por
+        onde passam as chaves, as sessões e as mensagens, reutilizando o
+        aeadEncrypt/aeadDecrypt que já existe.
+      - Mobile - chave de armazenamento no expo-secure-store (Keychain/Keystore)
+      - >
+        Web numa máquina própria - chave WebCrypto não exportável no
+        IndexedDB (protege contra cópia do perfil, não contra XSS).
+      - >
+        Web em qualquer máquina, por omissão - chave derivada de um PIN/frase
+        com Argon2id (já incluído no @noble/hashes), nunca gravada.
+      - Modo "computador público" opcional - nada persistido, só em memória
+      - >
+        Logout apaga as chaves, as sessões e as mensagens locais, e desativa
+        o device no servidor.
+      - >
+        Uma máquina nova começa sem histórico; o histórico vem por ligação
+        por QR (multi_dispositivo) ou por backup (backup_e_restauro_de_chaves).
+      - >
+        O XSS continua a ser o risco que sobra na web - Content-Security-Policy
+        estrita e zero scripts de terceiros.
+      - Migração dos dados que já existam em claro, na primeira execução
+  trabalho_por_fazer: >
+    Nas issues do GitHub - verificação de identidade, proteção dos dados no
+    dispositivo, reposição de OPKs, arquivo de sessões, rotação da SPK,
+    limite às chaves saltadas, grupos (Sender Keys) e revisão externa.
 
 federacao:
   descoberta: .well-known/chatapp/server

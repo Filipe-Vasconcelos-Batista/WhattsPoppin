@@ -24,7 +24,7 @@ nesta primeira versão — tudo o resto constrói-se por cima disto.
 | Frontend (web → mobile → desktop) | React Native + Expo, TypeScript |
 | Backend | Python + FastAPI (WebSockets nativos, async) |
 | Base de dados | PostgreSQL, via [Peewee](https://docs.peewee-orm.com/) (síncrono, chamado a partir do FastAPI com `run_in_threadpool`) |
-| Cifra ponta-a-ponta | Double Ratchet + X3DH implementados de raiz (specs do Signal), sobre `@noble/curves`/`@noble/hashes`/`@noble/ciphers` (JS puro, sem WASM) — ligado ao envio e receção de mensagens 1:1, uma sessão por par de dispositivos (ver [`Documents/plano-cifra-ponta-a-ponta.md`](./Documents/plano-cifra-ponta-a-ponta.md)) |
+| Cifra ponta-a-ponta | Double Ratchet + X3DH implementados de raiz (specs do Signal), sobre `@noble/curves`/`@noble/hashes`/`@noble/ciphers` (JS puro, sem WASM) — ligado ao envio e receção de mensagens 1:1, uma sessão por par de dispositivos (desenho e decisões na secção `cifra` de [`Documents/projeto-chat-selfhosted.yaml`](./Documents/projeto-chat-selfhosted.yaml)) |
 | Infraestrutura | Docker, Caddy (reverse proxy + HTTPS automático via Let's Encrypt) |
 
 ## Ordem de plataformas
@@ -46,7 +46,7 @@ WhattsPoppin/
 
 ```bash
 # 1. Base de dados
-cp .env.example .env    # ajusta a password
+cp .env.example .env
 docker compose up -d postgres
 
 # 2. Backend
@@ -57,9 +57,9 @@ set -a && source ../.env && set +a
 pw_migrate migrate --directory migrations --database "$DATABASE_URL"
 uvicorn app.main:app --reload
 
-# 3. Frontend, noutro terminal
+
 cd frontend
-nvm use          # fixa o Node deste projecto (24, ver .nvmrc)
+nvm use
 npm install
 npm run web
 ```
@@ -98,8 +98,12 @@ aparecem um ao outro na lista de conversas.
 
 ## Limitações conhecidas
 
+- **Sem verificação de identidade** (número de segurança / QR). A cifra
+  protege contra quem escuta a rede, mas não contra um servidor
+  comprometido que troque as chaves de alguém.
 - **Cifra só em 1:1, e com arestas conhecidas** (detalhe em
-  [`Documents/plano-cifra-ponta-a-ponta.md`](./Documents/plano-cifra-ponta-a-ponta.md)):
+  `cifra.limitacoes_conhecidas` no
+  [`Documents/projeto-chat-selfhosted.yaml`](./Documents/projeto-chat-selfhosted.yaml)):
   se os dois lados abrirem sessão ao mesmo tempo, as mensagens que se
   cruzarem podem não decifrar; não há rotação da signed prekey nem
   reposição automática das one-time prekeys; e cada login cria um
@@ -115,9 +119,10 @@ aparecem um ao outro na lista de conversas.
   sistema operativo). Aqui, na web, as mensagens **e as chaves privadas**
   estão no `localStorage` sem cifra — legíveis por qualquer script na
   página e por quem aceder ao perfil do browser, e ficam lá depois de
-  fechar a app. Não usar numa máquina partilhada por enquanto. O plano
+  fechar a app. Não usar numa máquina partilhada por enquanto. O desenho
   para resolver isto (fora do MVP) está em
-  [`Documents/plano-cifra-ponta-a-ponta.md`](./Documents/plano-cifra-ponta-a-ponta.md).
+  `cifra.protecao_dos_dados_no_dispositivo` no
+  [`Documents/projeto-chat-selfhosted.yaml`](./Documents/projeto-chat-selfhosted.yaml).
 - **Sem indicação fora da conversa.** Uma mensagem só aparece se tiveres o
   ecrã dessa conversa aberto — a lista não mostra pré-visualização real nem
   contagem de não lidas.
@@ -147,9 +152,9 @@ npm run test          # Vitest (cifra: primitivos, X3DH, Double Ratchet, sessõe
 
 ```bash
 source .venv/bin/activate
-ruff check .      # lint
-mypy app          # verificação de tipos
-pytest -q         # testes (numa BD própria, ver abaixo)
+ruff check .
+mypy app
+pytest -q
 ```
 
 O `pytest` nunca corre contra a BD de dev: `tests/conftest.py` exige
