@@ -145,9 +145,9 @@ describe('encryptForDevice / decryptFromDevice', () => {
 
   it('rejeita uma mensagem sem sessão e sem prelúdio', async () => {
     const envelope = await encryptForDevice(ALICE, BOB, 'x');
-    await expect(decryptFromDevice(BOB, ALICE, { ...incoming(envelope), x3dh: null })).rejects.toThrow(
-      /prelúdio/,
-    );
+    await expect(
+      decryptFromDevice(BOB, ALICE, { ...incoming(envelope), x3dh: null }),
+    ).rejects.toThrow(/prelúdio/);
   });
 });
 

@@ -240,8 +240,8 @@ chegarmos à Fase 2.
     saltadas antigas ao fim de algum tempo/número) - fica para quando
     houver tráfego real
 
-- [x] **Fase 5 - Ligar ao resto da app** (código e testes automáticos
-  feitos; **falta o `pytest` na BD de teste e o teste manual**; por commitar)
+- [x] **Fase 5 - Ligar ao resto da app** (completa, testada - automáticos
+  e manual -, commitada)
   - **BD de teste isolada:** `backend/tests/conftest.py` força o `pytest` a
     usar `TEST_DATABASE_URL` e aborta se não existir ou se o nome da BD não
     acabar em `_test`. Corre as migrações e faz `TRUNCATE` no início de cada
@@ -276,6 +276,28 @@ chegarmos à Fase 2.
   - Testes: `messaging.test.ts` (8 testes, entre dispositivos simulados) e
     `backend/tests/test_messaging.py` (endpoint, routing por device,
     descarte de envelopes fora da conversa, payloads mal formados)
+  - **Dois bugs encontrados ao correr o `pytest` na BD de teste**, já
+    corrigidos:
+    - *Fuga de ligações à BD (bug de produção, anterior à Fase 5):* o
+      `run_sync` corria cada função num thread do threadpool, o Peewee abria
+      uma ligação por thread e ninguém a fechava, por isso nunca voltava ao
+      pool. O pool tem 20 ligações e o threadpool do anyio até 40 threads:
+      com carga suficiente, o backend real dava `MaxConnectionsExceeded`.
+      Corrigido em `app/db/sync.py`: cada chamada corre dentro de
+      `db.connection_context()`, que devolve a ligação ao pool no fim
+    - *Testes de WebSocket bloqueados (só nos testes):* fora de um `with`, o
+      `TestClient` do Starlette 1.7 abre cada WebSocket no seu próprio event
+      loop, e uma mensagem enviada do handler de um socket para outro nunca
+      acorda quem está à espera. Os testes usam agora uma fixture
+      `ws_client` com `with TestClient(app)`, que partilha um só loop, como
+      no uvicorn
+  - **Teste manual confirmado (2026-09-25):** BD de dev recriada de raiz,
+    duas contas novas (aba normal + janela privada), mensagens nos dois
+    sentidos. No separador Network → WS os frames só levam `header`,
+    `ciphertext` e `x3dh`: a primeira mensagem recebida trazia o prelúdio
+    com `one_time_prekey_id`, `n: 0`, `pn: 0`, e um ciphertext de 31 bytes
+    para "ola" (12 de nonce + 3 de texto + 16 de tag), sem texto legível em
+    lado nenhum. `pytest`: 9 passed
   - **Limitações conhecidas, que ficam para depois:**
     - *Inícios simultâneos:* se A e B abrirem sessão um com o outro ao mesmo
       tempo, a última sessão recebida substitui a outra, e as mensagens que se
@@ -291,17 +313,106 @@ chegarmos à Fase 2.
       Sender Keys (ver `esquema_de_grupos` no yaml), e para grupos muito
       grandes existe o MLS (RFC 9420)
 
+## Futuro (fora do MVP): proteger os dados no dispositivo e usar a web em qualquer máquina
+
+### O problema
+
+A cifra ponta-a-ponta protege o caminho entre dispositivos, não o
+dispositivo. Guardar as mensagens decifradas localmente é o normal (o
+WhatsApp e o Signal também o fazem, para mostrar e pesquisar o histórico).
+A diferença é que eles **protegem esse armazenamento**. O Signal, por
+exemplo, cifra a base de dados local com uma chave que vive no cofre do
+sistema operativo.
+
+Hoje, na web, está tudo no `localStorage` sem cifra: as mensagens
+(`messageStore.ts`) e, mais grave, as chaves privadas e o estado das
+sessões (`keys.ts`, `sessionStore.ts`). Isso é:
+- legível por qualquer JavaScript que corra na página (XSS)
+- legível por quem tenha acesso ao perfil do browser
+- deixado para trás quando se fecha a app, o que numa máquina partilhada
+  significa que o próximo utilizador herda a identidade daquele device
+
+**Requisito:** o WhattsPoppin tem de poder ser usado na web **em
+qualquer máquina**, incluindo máquinas que não são nossas. Por isso isto
+não pode ficar só como "não usar em máquinas partilhadas".
+
+### Desenho proposto
+
+1. **Um único ponto de armazenamento cifrado.** `keys.ts`,
+   `sessionStore.ts` e `messageStore.ts` deixam de falar diretamente com
+   o `AsyncStorage` e passam por um módulo único (ex.: `storage/vault.ts`)
+   que cifra cada valor com uma **chave de armazenamento**, reutilizando o
+   `aeadEncrypt`/`aeadDecrypt` que já existem. A lógica da cifra não muda,
+   só o sítio onde as coisas são gravadas.
+
+2. **Onde vive a chave de armazenamento**, conforme o tipo de dispositivo:
+   - **Mobile (Android/iOS):** no `expo-secure-store` (Keychain / Keystore).
+     Equivale ao que o Signal faz. É uma dependência nova, por isso quem a
+     instala é o Filipe
+   - **Web numa máquina própria ("confiar neste dispositivo"):** chave AES
+     do WebCrypto marcada como **não exportável**, guardada no IndexedDB.
+     Protege contra quem copie os ficheiros do perfil, mas não contra XSS
+     (um script malicioso pode pedir ao browser para decifrar)
+   - **Web em qualquer máquina (o caso por omissão na web):** chave
+     **derivada de um PIN/frase** do utilizador com Argon2id, que já vem
+     no `@noble/hashes` instalado. A chave nunca é gravada: cada vez que
+     se abre a app pede-se o PIN. Sem o PIN, o que fica no disco é
+     ilegível
+   - **Modo "computador público" (opcional):** nada é persistido. Chaves,
+     sessões e mensagens ficam só em memória e desaparecem ao fechar o
+     separador
+
+3. **Sair tem de limpar tudo.** O logout apaga as chaves, as sessões e as
+   mensagens locais, e **desativa o device no servidor**
+   (`is_active = False`), para os outros deixarem de cifrar para ele. Isto
+   resolve também, em parte, a limitação dos "devices antigos" (cada login
+   cria um device novo e os antigos continuam ativos).
+
+4. **Histórico numa máquina nova.** Cada login na web cria um device novo
+   com chaves novas, por isso uma máquina nova começa **sem histórico**. É
+   o comportamento esperado e seguro. Para trazer histórico usa-se o que já
+   está desenhado no yaml: ligar o device novo a partir de um já confiável
+   por QR (`multi_dispositivo`) ou restaurar um backup
+   (`backup_e_restauro_de_chaves`).
+
+5. **XSS é o risco que sobra na web**, e nenhuma das opções acima o
+   elimina. É uma limitação da própria web: o Signal nem oferece cliente
+   web por isso, e o WhatsApp Web mitiga-o com verificação do código
+   servido. Mitigações do nosso lado: Content-Security-Policy estrita, zero
+   scripts de terceiros, e o código da app servido só pelo nosso servidor.
+
+6. **Migração.** Na primeira execução com o vault, os dados que já existam
+   em claro são lidos, cifrados, regravados, e os originais apagados.
+
+### O que isto não é
+
+- Não muda nada no protocolo nem no servidor, exceto desativar o device
+  no logout
+- Não é backup de chaves (isso é `backup_e_restauro_de_chaves` no yaml),
+  mas o vault é a base onde o backup e a ligação por QR se vão apoiar
+
 ## Onde ficámos
 
-**Estado em 2026-09-25:** Fases 1 a 5 completas no código. `npm run test`
-(77 testes), `npx tsc --noEmit` e `npx expo lint` limpos no frontend;
-`ruff` e `mypy` limpos no backend. **Falta:**
-1. criar a BD `whattspoppin_test`, pôr `TEST_DATABASE_URL` no `.env` e
-   correr `pytest -q`
-2. teste manual com duas contas novas, confirmando no separador Network → WS
-   do browser que os frames só levam `ciphertext` e `header`
-3. commitar a Fase 5
+**Estado em 2026-09-25:** as 5 fases estão completas, testadas e
+commitadas: a cifra ponta-a-ponta do MVP (mensagens 1:1) está feita.
+Frontend: 77 testes (`npm run test`), `tsc` e `expo lint` limpos. Backend:
+9 testes (`pytest`, na BD `whattspoppin_test`), `ruff` e `mypy app`
+limpos. `README.md` e `projeto-chat-selfhosted.yaml` actualizados.
 
-Depois disso a cifra ponta-a-ponta do MVP (1:1) está completa. O
-`README.md` e o `projeto-chat-selfhosted.yaml` ainda dizem "sem cifra" e
-têm de ser actualizados.
+Pendente, fora das fases:
+- `mypy tests` dá um erro antigo em `tests/test_devices.py:21` (`dict`
+  sem tipos)
+
+Próximos passos possíveis, por ordem de impacto para o uso real:
+1. **Reposição de OPKs** - hoje cada device tem 20 e nunca repõe; depois
+   de esgotadas, as sessões novas perdem o DH4
+2. **Arquivo de sessões** - para os inícios simultâneos não perderem as
+   mensagens que se cruzam
+3. **Rotação da SPK** - guardando a privada antiga enquanto houver
+   sessões que dela dependam (é também o primeiro par ratchet de Bob)
+4. **Limite global a MKSKIPPED** - apagar chaves saltadas antigas
+5. **Verificação de identidade** - número de segurança / QR (ver
+   `qr_codes` no yaml), para detectar um servidor que troque chaves
+6. **Proteger os dados no dispositivo e permitir usar a web em qualquer
+   máquina** - ver a secção "Futuro" abaixo
+7. Grupos com Sender Keys (ver `esquema_de_grupos` no yaml)

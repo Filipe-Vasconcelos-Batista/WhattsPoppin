@@ -203,8 +203,6 @@ describe('aeadEncrypt / aeadDecrypt', () => {
   });
 
   it('rejects a key with the wrong length', () => {
-    expect(() =>
-      aeadEncrypt(key.slice(0, 31), new Uint8Array(1), ad)
-    ).toThrow();
+    expect(() => aeadEncrypt(key.slice(0, 31), new Uint8Array(1), ad)).toThrow();
   });
 });

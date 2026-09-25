@@ -3,7 +3,11 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 
 import { loginUser, registerUser, resumeSession, type UserSummary } from '../api/auth';
 import { generateAndPublishDeviceKeys } from '../crypto/keys';
-import { decryptIncoming, encryptForConversation, type IncomingEncryptedMessage } from '../crypto/messaging';
+import {
+  decryptIncoming,
+  encryptForConversation,
+  type IncomingEncryptedMessage,
+} from '../crypto/messaging';
 import { useSocketConnection } from '../hooks/useSocketConnection';
 import { loadMessages, saveMessages } from '../storage/messageStore';
 import { formatTimeNow } from '../utils/time';
@@ -13,7 +17,11 @@ const STORAGE_KEY = 'whattspoppin.device_token';
 const UNDECRYPTABLE_TEXT = '[mensagem não pôde ser decifrada]';
 
 type IncomingPayload =
-  | ({ type: 'message'; conversation_id: string; sender_device_id: string } & IncomingEncryptedMessage)
+  | ({
+      type: 'message';
+      conversation_id: string;
+      sender_device_id: string;
+    } & IncomingEncryptedMessage)
   | { type: 'user_registered'; user: UserSummary };
 
 type IdentityValue = {
@@ -136,7 +144,9 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
 
       if (payload.type === 'user_registered') {
         setOtherUsers((prev) =>
-          prev.some((user) => user.user_id === payload.user.user_id) ? prev : [...prev, payload.user],
+          prev.some((user) => user.user_id === payload.user.user_id)
+            ? prev
+            : [...prev, payload.user],
         );
         return;
       }
@@ -188,7 +198,9 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     encryptForConversation(deviceId, conversationId, text)
       .then((envelopes) => {
         if (envelopes.length === 0) {
-          console.warn('Nenhum dispositivo do destinatário tem chaves publicadas - mensagem não enviada');
+          console.warn(
+            'Nenhum dispositivo do destinatário tem chaves publicadas - mensagem não enviada',
+          );
           return;
         }
         send({ conversation_id: conversationId, envelopes });

@@ -76,7 +76,11 @@ describe('deriveInitiatorSharedKey / deriveResponderSharedKey', () => {
     const aliceIdentityKey = edKeyPair();
     const aliceEphemeralKey = generateKeyPair();
 
-    const alice = deriveInitiatorSharedKey(aliceIdentityKey, aliceEphemeralKey, bundleFromDevice(bob, opk));
+    const alice = deriveInitiatorSharedKey(
+      aliceIdentityKey,
+      aliceEphemeralKey,
+      bundleFromDevice(bob, opk),
+    );
     const bobResult = deriveResponderSharedKey(localKeysFromDevice(bob, opk), alice.initialMessage);
 
     expect(bobResult.sharedKey).toEqual(alice.sharedKey);
@@ -87,8 +91,15 @@ describe('deriveInitiatorSharedKey / deriveResponderSharedKey', () => {
     const bob = generateDeviceKeys();
     const aliceIdentityKey = edKeyPair();
 
-    const alice = deriveInitiatorSharedKey(aliceIdentityKey, generateKeyPair(), bundleFromDevice(bob, null));
-    const bobResult = deriveResponderSharedKey(localKeysFromDevice(bob, null), alice.initialMessage);
+    const alice = deriveInitiatorSharedKey(
+      aliceIdentityKey,
+      generateKeyPair(),
+      bundleFromDevice(bob, null),
+    );
+    const bobResult = deriveResponderSharedKey(
+      localKeysFromDevice(bob, null),
+      alice.initialMessage,
+    );
 
     expect(bobResult.associatedData).toEqual(alice.associatedData);
     expect(alice.associatedData.length).toBe(64);
@@ -100,8 +111,15 @@ describe('deriveInitiatorSharedKey / deriveResponderSharedKey', () => {
     const aliceIdentityKey = edKeyPair();
     const aliceEphemeralKey = generateKeyPair();
 
-    const alice = deriveInitiatorSharedKey(aliceIdentityKey, aliceEphemeralKey, bundleFromDevice(bob, null));
-    const bobResult = deriveResponderSharedKey(localKeysFromDevice(bob, null), alice.initialMessage);
+    const alice = deriveInitiatorSharedKey(
+      aliceIdentityKey,
+      aliceEphemeralKey,
+      bundleFromDevice(bob, null),
+    );
+    const bobResult = deriveResponderSharedKey(
+      localKeysFromDevice(bob, null),
+      alice.initialMessage,
+    );
 
     expect(bobResult.sharedKey).toEqual(alice.sharedKey);
   });
@@ -111,8 +129,16 @@ describe('deriveInitiatorSharedKey / deriveResponderSharedKey', () => {
     const opk = bob.oneTimePrekeys[0];
     const aliceIdentityKey = edKeyPair();
 
-    const withOpk = deriveInitiatorSharedKey(aliceIdentityKey, generateKeyPair(), bundleFromDevice(bob, opk));
-    const withoutOpk = deriveInitiatorSharedKey(aliceIdentityKey, generateKeyPair(), bundleFromDevice(bob, null));
+    const withOpk = deriveInitiatorSharedKey(
+      aliceIdentityKey,
+      generateKeyPair(),
+      bundleFromDevice(bob, opk),
+    );
+    const withoutOpk = deriveInitiatorSharedKey(
+      aliceIdentityKey,
+      generateKeyPair(),
+      bundleFromDevice(bob, null),
+    );
 
     expect(withOpk.sharedKey).not.toEqual(withoutOpk.sharedKey);
   });
@@ -136,9 +162,15 @@ describe('deriveInitiatorSharedKey / deriveResponderSharedKey', () => {
     const bob = generateDeviceKeys();
     const opk = bob.oneTimePrekeys[0];
 
-    const alice = deriveInitiatorSharedKey(edKeyPair(), generateKeyPair(), bundleFromDevice(bob, opk));
+    const alice = deriveInitiatorSharedKey(
+      edKeyPair(),
+      generateKeyPair(),
+      bundleFromDevice(bob, opk),
+    );
 
-    expect(() => deriveResponderSharedKey(localKeysFromDevice(bob, null), alice.initialMessage)).toThrow();
+    expect(() =>
+      deriveResponderSharedKey(localKeysFromDevice(bob, null), alice.initialMessage),
+    ).toThrow();
   });
 
   it('duas sessões diferentes para o mesmo bundle dão SKs diferentes', () => {
@@ -146,8 +178,16 @@ describe('deriveInitiatorSharedKey / deriveResponderSharedKey', () => {
     const opk = bob.oneTimePrekeys[0];
     const aliceIdentityKey = edKeyPair();
 
-    const first = deriveInitiatorSharedKey(aliceIdentityKey, generateKeyPair(), bundleFromDevice(bob, opk));
-    const second = deriveInitiatorSharedKey(aliceIdentityKey, generateKeyPair(), bundleFromDevice(bob, opk));
+    const first = deriveInitiatorSharedKey(
+      aliceIdentityKey,
+      generateKeyPair(),
+      bundleFromDevice(bob, opk),
+    );
+    const second = deriveInitiatorSharedKey(
+      aliceIdentityKey,
+      generateKeyPair(),
+      bundleFromDevice(bob, opk),
+    );
 
     expect(first.sharedKey).not.toEqual(second.sharedKey);
   });
@@ -174,7 +214,10 @@ describe('initiateSession / receiveInitialMessage', () => {
       one_time_prekey: bytesToBase64(bobOpk.keyPair.publicKey),
     });
 
-    const aliceResult = await initiateSession({ myDeviceId: aliceDeviceId, recipientDeviceId: bobDeviceId });
+    const aliceResult = await initiateSession({
+      myDeviceId: aliceDeviceId,
+      recipientDeviceId: bobDeviceId,
+    });
     const bobResult = await receiveInitialMessage({
       myDeviceId: bobDeviceId,
       initialMessage: aliceResult.initialMessage,
@@ -204,11 +247,20 @@ describe('initiateSession / receiveInitialMessage', () => {
       one_time_prekey: bytesToBase64(bobOpk.keyPair.publicKey),
     });
 
-    const aliceResult = await initiateSession({ myDeviceId: aliceDeviceId, recipientDeviceId: bobDeviceId });
-    await receiveInitialMessage({ myDeviceId: bobDeviceId, initialMessage: aliceResult.initialMessage });
+    const aliceResult = await initiateSession({
+      myDeviceId: aliceDeviceId,
+      recipientDeviceId: bobDeviceId,
+    });
+    await receiveInitialMessage({
+      myDeviceId: bobDeviceId,
+      initialMessage: aliceResult.initialMessage,
+    });
 
     await expect(
-      receiveInitialMessage({ myDeviceId: bobDeviceId, initialMessage: aliceResult.initialMessage }),
+      receiveInitialMessage({
+        myDeviceId: bobDeviceId,
+        initialMessage: aliceResult.initialMessage,
+      }),
     ).rejects.toThrow();
   });
 });

@@ -65,7 +65,9 @@ describe('saveSession / loadSession', () => {
     bob.state = (await loadSession('bob-device', 'alice-device'))!.state;
 
     expect(receive(bob, delayed)).toBe('atrasada');
-    expect(receive(alice, send(bob, 'resposta depois de recarregar'))).toBe('resposta depois de recarregar');
+    expect(receive(alice, send(bob, 'resposta depois de recarregar'))).toBe(
+      'resposta depois de recarregar',
+    );
     expect(receive(bob, send(alice, 'e mais uma'))).toBe('e mais uma');
   });
 

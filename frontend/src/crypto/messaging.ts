@@ -3,7 +3,13 @@
 // sessões e converte tudo para o formato que viaja no WebSocket (base64).
 
 import { fetchRecipientDevices } from '../api/conversations';
-import { initAlice, initBob, ratchetDecrypt, ratchetEncrypt, type RatchetHeader } from './doubleRatchet';
+import {
+  initAlice,
+  initBob,
+  ratchetDecrypt,
+  ratchetEncrypt,
+  type RatchetHeader,
+} from './doubleRatchet';
 import { bytesToBase64, base64ToBytes } from './encoding';
 import { consumeOneTimePrekey, loadDeviceKeys } from './keys';
 import { loadSession, saveSession, type SessionRecord } from './sessionStore';
@@ -92,7 +98,10 @@ export async function encryptForDevice(
     };
   }
 
-  const { state, header, ciphertext } = ratchetEncrypt(record.state, new TextEncoder().encode(text));
+  const { state, header, ciphertext } = ratchetEncrypt(
+    record.state,
+    new TextEncoder().encode(text),
+  );
   await saveSession(myDeviceId, remoteDeviceId, { ...record, state });
 
   return {
@@ -103,7 +112,10 @@ export async function encryptForDevice(
   };
 }
 
-async function sessionFromPrelude(myDeviceId: string, prelude: X3dhInitialMessage): Promise<SessionRecord> {
+async function sessionFromPrelude(
+  myDeviceId: string,
+  prelude: X3dhInitialMessage,
+): Promise<SessionRecord> {
   const responder = await receiveInitialMessage({
     myDeviceId,
     initialMessage: prelude,
@@ -138,11 +150,16 @@ export async function decryptFromDevice(
   // respondermos, reutiliza-se a sessão que já existe.
   const newSessionPrelude =
     prelude &&
-    !(existing?.initiatorEphemeralKey && bytesEqual(existing.initiatorEphemeralKey, prelude.ephemeralKey))
+    !(
+      existing?.initiatorEphemeralKey &&
+      bytesEqual(existing.initiatorEphemeralKey, prelude.ephemeralKey)
+    )
       ? prelude
       : null;
 
-  const record = newSessionPrelude ? await sessionFromPrelude(myDeviceId, newSessionPrelude) : existing;
+  const record = newSessionPrelude
+    ? await sessionFromPrelude(myDeviceId, newSessionPrelude)
+    : existing;
   if (!record) {
     throw new Error('Não há sessão com este dispositivo e a mensagem não traz prelúdio X3DH');
   }

@@ -76,7 +76,10 @@ function serializeState(state: RatchetState): StoredState {
 
 function deserializeState(stored: StoredState): RatchetState {
   return {
-    dhs: { privateKey: base64ToBytes(stored.dhsPrivateKey), publicKey: base64ToBytes(stored.dhsPublicKey) },
+    dhs: {
+      privateKey: base64ToBytes(stored.dhsPrivateKey),
+      publicKey: base64ToBytes(stored.dhsPublicKey),
+    },
     dhr: fromBase64OrNull(stored.dhr),
     rk: base64ToBytes(stored.rk),
     cks: fromBase64OrNull(stored.cks),
@@ -126,10 +129,16 @@ export async function saveSession(
   remoteDeviceId: string,
   record: SessionRecord,
 ): Promise<void> {
-  await AsyncStorage.setItem(storageKey(myDeviceId, remoteDeviceId), JSON.stringify(serialize(record)));
+  await AsyncStorage.setItem(
+    storageKey(myDeviceId, remoteDeviceId),
+    JSON.stringify(serialize(record)),
+  );
 }
 
-export async function loadSession(myDeviceId: string, remoteDeviceId: string): Promise<SessionRecord | null> {
+export async function loadSession(
+  myDeviceId: string,
+  remoteDeviceId: string,
+): Promise<SessionRecord | null> {
   const raw = await AsyncStorage.getItem(storageKey(myDeviceId, remoteDeviceId));
   if (!raw) return null;
   try {

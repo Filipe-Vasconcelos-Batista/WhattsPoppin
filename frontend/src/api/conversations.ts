@@ -20,7 +20,10 @@ export async function getOrCreateConversation(
 
 // Dispositivos do(s) outro(s) participante(s) para os quais é preciso cifrar -
 // só os que já publicaram chaves.
-export async function fetchRecipientDevices(conversationId: string, myDeviceId: string): Promise<string[]> {
+export async function fetchRecipientDevices(
+  conversationId: string,
+  myDeviceId: string,
+): Promise<string[]> {
   const response = await fetch(
     `${API_URL}/conversations/${conversationId}/devices?device_id=${encodeURIComponent(myDeviceId)}`,
   );

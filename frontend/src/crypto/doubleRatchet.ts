@@ -91,7 +91,11 @@ function headerAd(ad: Uint8Array, header: RatchetHeader): Uint8Array {
   return concatBytes(ad, encodeHeader(header));
 }
 
-export function initAlice(sk: Uint8Array, bobRatchetPublicKey: Uint8Array, ad: Uint8Array): RatchetState {
+export function initAlice(
+  sk: Uint8Array,
+  bobRatchetPublicKey: Uint8Array,
+  ad: Uint8Array,
+): RatchetState {
   const dhs = generateKeyPair();
   const { rootKey, chainKey } = hkdfRk(sk, dh(dhs.privateKey, bobRatchetPublicKey));
   return {
@@ -127,14 +131,20 @@ export function initBob(sk: Uint8Array, bobSignedPrekey: KeyPair, ad: Uint8Array
 
 export function ratchetEncrypt(state: RatchetState, plaintext: Uint8Array): EncryptResult {
   if (!state.cks) {
-    throw new Error('Ainda não há cadeia de envio - Bob só pode enviar depois de receber a primeira mensagem');
+    throw new Error(
+      'Ainda não há cadeia de envio - Bob só pode enviar depois de receber a primeira mensagem',
+    );
   }
   const next = cloneState(state);
   const { chainKey, messageKey } = hmacCk(state.cks);
   const header: RatchetHeader = { dh: next.dhs.publicKey, pn: next.pn, n: next.ns };
   next.cks = chainKey;
   next.ns += 1;
-  return { state: next, header, ciphertext: aeadEncrypt(messageKey, plaintext, headerAd(next.ad, header)) };
+  return {
+    state: next,
+    header,
+    ciphertext: aeadEncrypt(messageKey, plaintext, headerAd(next.ad, header)),
+  };
 }
 
 export function ratchetDecrypt(

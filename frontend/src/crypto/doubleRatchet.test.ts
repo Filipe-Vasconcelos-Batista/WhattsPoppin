@@ -96,8 +96,14 @@ describe('Double Ratchet', () => {
     receive(bob, send(alice, 'primeira'));
     const message = send(alice, 'segunda');
 
-    const tamperedPn: Envelope = { ...message, header: { ...message.header, pn: message.header.pn + 1 } };
-    const tamperedN: Envelope = { ...message, header: { ...message.header, n: message.header.n + 1 } };
+    const tamperedPn: Envelope = {
+      ...message,
+      header: { ...message.header, pn: message.header.pn + 1 },
+    };
+    const tamperedN: Envelope = {
+      ...message,
+      header: { ...message.header, n: message.header.n + 1 },
+    };
 
     expect(() => receive(bob, tamperedPn)).toThrow();
     expect(() => receive(bob, tamperedN)).toThrow();

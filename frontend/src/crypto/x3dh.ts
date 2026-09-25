@@ -64,7 +64,12 @@ export interface X3dhResponderResult {
   associatedData: Uint8Array; // AD = IK_A || IK_B, igual ao de Alice
 }
 
-function combineDhOutputs(dh1: Uint8Array, dh2: Uint8Array, dh3: Uint8Array, dh4: Uint8Array | null): Uint8Array {
+function combineDhOutputs(
+  dh1: Uint8Array,
+  dh2: Uint8Array,
+  dh3: Uint8Array,
+  dh4: Uint8Array | null,
+): Uint8Array {
   return dh4
     ? concatBytes(KEY_REUSE_PREFIX, dh1, dh2, dh3, dh4)
     : concatBytes(KEY_REUSE_PREFIX, dh1, dh2, dh3);
@@ -90,7 +95,9 @@ export function deriveInitiatorSharedKey(
   const dh1 = dh(aliceIkX, bobBundle.signedPrekey); // IK_A x SPK_B
   const dh2 = dh(aliceEphemeralKey.privateKey, bobIkX); // EK_A x IK_B
   const dh3 = dh(aliceEphemeralKey.privateKey, bobBundle.signedPrekey); // EK_A x SPK_B
-  const dh4 = bobBundle.oneTimePrekey ? dh(aliceEphemeralKey.privateKey, bobBundle.oneTimePrekey) : null; // EK_A x OPK_B
+  const dh4 = bobBundle.oneTimePrekey
+    ? dh(aliceEphemeralKey.privateKey, bobBundle.oneTimePrekey)
+    : null; // EK_A x OPK_B
 
   return {
     sharedKey: kdfX3dh(combineDhOutputs(dh1, dh2, dh3, dh4)),
@@ -157,7 +164,12 @@ export async function initiateSession(params: InitiateSessionParams): Promise<X3
   };
 
   const raw = await fetchPrekeyBundle(params.recipientDeviceId);
-  if (!raw.identity_key || !raw.signed_prekey || !raw.signed_prekey_signature || raw.signed_prekey_id === null) {
+  if (
+    !raw.identity_key ||
+    !raw.signed_prekey ||
+    !raw.signed_prekey_signature ||
+    raw.signed_prekey_id === null
+  ) {
     throw new Error('O destinatário ainda não publicou as suas chaves');
   }
 
@@ -185,7 +197,9 @@ export interface ReceiveInitialMessageParams {
 
 // Wrapper de I/O do lado de Bob: carrega as chaves locais, consome a OPK
 // usada (salvo consumeOneTimePrekey: false) e chama o núcleo puro.
-export async function receiveInitialMessage(params: ReceiveInitialMessageParams): Promise<X3dhResponderResult> {
+export async function receiveInitialMessage(
+  params: ReceiveInitialMessageParams,
+): Promise<X3dhResponderResult> {
   const myKeys = await loadDeviceKeys(params.myDeviceId);
   if (!myKeys) throw new Error('Chaves locais não encontradas - gera as chaves primeiro');
 
@@ -213,5 +227,8 @@ export async function receiveInitialMessage(params: ReceiveInitialMessageParams)
     }
   }
 
-  return deriveResponderSharedKey({ identityKey, signedPrekeyPrivate, oneTimePrekeyPrivate }, params.initialMessage);
+  return deriveResponderSharedKey(
+    { identityKey, signedPrekeyPrivate, oneTimePrekeyPrivate },
+    params.initialMessage,
+  );
 }

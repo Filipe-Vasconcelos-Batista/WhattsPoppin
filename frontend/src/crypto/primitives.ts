@@ -90,7 +90,7 @@ export function kdfX3dh(ikm: Uint8Array): Uint8Array {
 export function aeadEncrypt(
   key: Uint8Array,
   plaintext: Uint8Array,
-  associatedData: Uint8Array
+  associatedData: Uint8Array,
 ): Uint8Array {
   assertLength(key, KEY_LENGTH, 'key');
   const nonce = randomBytes(NONCE_LENGTH);
@@ -101,7 +101,7 @@ export function aeadEncrypt(
 export function aeadDecrypt(
   key: Uint8Array,
   ciphertext: Uint8Array,
-  associatedData: Uint8Array
+  associatedData: Uint8Array,
 ): Uint8Array {
   assertLength(key, KEY_LENGTH, 'key');
   if (ciphertext.length < NONCE_LENGTH + TAG_LENGTH) {

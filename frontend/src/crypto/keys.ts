@@ -83,10 +83,12 @@ export async function loadDeviceKeys(deviceId: string): Promise<StoredDeviceKeys
 // rodam por decisão explícita, fora do âmbito desta fase).
 export async function storeDeviceKeys(deviceId: string, keys: DeviceKeyMaterial): Promise<void> {
   const existing = await loadDeviceKeys(deviceId);
-  const newOneTimePrekeys: StoredOneTimePrekey[] = keys.oneTimePrekeys.map(({ keyId, keyPair }) => ({
-    keyId,
-    privateKey: bytesToBase64(keyPair.privateKey),
-  }));
+  const newOneTimePrekeys: StoredOneTimePrekey[] = keys.oneTimePrekeys.map(
+    ({ keyId, keyPair }) => ({
+      keyId,
+      privateKey: bytesToBase64(keyPair.privateKey),
+    }),
+  );
 
   const stored: StoredDeviceKeys = {
     identityPrivateKey: bytesToBase64(keys.identityKey.privateKey),

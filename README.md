@@ -4,11 +4,11 @@ App de chat self-hosted federada, cifrada ponta-a-ponta. Cada pessoa ou grupo
 de amigos corre o próprio servidor; os servidores federam entre si (como
 email), sem depender de infraestrutura de terceiros.
 
-**Estado:** prova de conceito — registo, login e mensagens de texto em tempo
-real já funcionam entre vários utilizadores, testado entre dispositivos
-diferentes na mesma rede. Ainda sem cifra e sem várias peças do desenho
-final (ver [Limitações conhecidas](#limitações-conhecidas), e o estado
-completo em
+**Estado:** prova de conceito — registo, login e mensagens de texto 1:1 em
+tempo real, **cifradas ponta-a-ponta** (X3DH + Double Ratchet), testado
+entre dispositivos diferentes na mesma rede. O servidor só encaminha
+ciphertext. Ainda faltam várias peças do desenho final (ver
+[Limitações conhecidas](#limitações-conhecidas), e o estado completo em
 [`Documents/projeto-chat-selfhosted.yaml`](./Documents/projeto-chat-selfhosted.yaml)).
 
 ## MVP
@@ -24,7 +24,7 @@ nesta primeira versão — tudo o resto constrói-se por cima disto.
 | Frontend (web → mobile → desktop) | React Native + Expo, TypeScript |
 | Backend | Python + FastAPI (WebSockets nativos, async) |
 | Base de dados | PostgreSQL, via [Peewee](https://docs.peewee-orm.com/) (síncrono, chamado a partir do FastAPI com `run_in_threadpool`) |
-| Cifra ponta-a-ponta | Double Ratchet + X3DH implementados de raiz (specs do Signal), sobre `@noble/curves`/`@noble/hashes`/`@noble/ciphers` (JS puro, sem WASM) — primitivos e publicação de chaves prontos, falta ligar ao envio/receção de mensagens (ver [`Documents/plano-cifra-ponta-a-ponta.md`](./Documents/plano-cifra-ponta-a-ponta.md)) |
+| Cifra ponta-a-ponta | Double Ratchet + X3DH implementados de raiz (specs do Signal), sobre `@noble/curves`/`@noble/hashes`/`@noble/ciphers` (JS puro, sem WASM) — ligado ao envio e receção de mensagens 1:1, uma sessão por par de dispositivos (ver [`Documents/plano-cifra-ponta-a-ponta.md`](./Documents/plano-cifra-ponta-a-ponta.md)) |
 | Infraestrutura | Docker, Caddy (reverse proxy + HTTPS automático via Let's Encrypt) |
 
 ## Ordem de plataformas
@@ -77,6 +77,11 @@ aparecem um ao outro na lista de conversas.
 - Tocar num utilizador cria a conversa (se ainda não existir) e abre o chat.
 - Mensagens de texto em tempo real via WebSocket, entre quantos
   utilizadores/dispositivos estiverem ligados.
+- **Cifra ponta-a-ponta:** cada dispositivo publica as suas chaves ao
+  criar conta/fazer login; a primeira mensagem abre uma sessão X3DH e
+  daí em diante cada mensagem usa uma chave nova (Double Ratchet). Quem
+  envia cifra um envelope por cada dispositivo do destinatário; o
+  servidor entrega a cada um só o seu e nunca vê o texto.
 - A lista atualiza-se sozinha quando alguém novo se regista, sem refresh.
 - O WebSocket reconecta-se sozinho se o backend reiniciar.
 - Mensagens persistem no dispositivo (por utilizador), sobrevivem a um
@@ -84,12 +89,26 @@ aparecem um ao outro na lista de conversas.
 
 ## Limitações conhecidas
 
-- **Sem cifra ligada ao envio/receção de mensagens.** As mensagens ainda
-  viajam em texto simples — a implementação própria de Double Ratchet +
-  X3DH está em curso (ver
+- **Cifra só em 1:1, e com arestas conhecidas** (detalhe em
   [`Documents/plano-cifra-ponta-a-ponta.md`](./Documents/plano-cifra-ponta-a-ponta.md)):
-  primitivos criptográficos e publicação das chaves de cada dispositivo já
-  feitos, falta X3DH, Double Ratchet e ligar tudo a `sendMessage`/receção.
+  se os dois lados abrirem sessão ao mesmo tempo, as mensagens que se
+  cruzarem podem não decifrar; não há rotação da signed prekey nem
+  reposição automática das one-time prekeys; e cada login cria um
+  dispositivo novo, para o qual quem envia também passa a cifrar.
+- **Sem backup de chaves.** As chaves privadas e as sessões vivem só no
+  armazenamento local do browser/dispositivo — limpar esse armazenamento
+  é perder a identidade desse dispositivo.
+- **Armazenamento local ainda sem proteção própria.** Guardar as mensagens
+  decifradas no dispositivo é o normal (o WhatsApp e o Signal fazem o
+  mesmo: a cifra ponta-a-ponta protege o caminho entre dispositivos, não o
+  dispositivo em si). A diferença é que eles protegem esse armazenamento
+  (o Signal cifra a base de dados local com uma chave guardada no cofre do
+  sistema operativo). Aqui, na web, as mensagens **e as chaves privadas**
+  estão no `localStorage` sem cifra — legíveis por qualquer script na
+  página e por quem aceder ao perfil do browser, e ficam lá depois de
+  fechar a app. Não usar numa máquina partilhada por enquanto. O plano
+  para resolver isto (fora do MVP) está em
+  [`Documents/plano-cifra-ponta-a-ponta.md`](./Documents/plano-cifra-ponta-a-ponta.md).
 - **Sem indicação fora da conversa.** Uma mensagem só aparece se tiveres o
   ecrã dessa conversa aberto — a lista não mostra pré-visualização real nem
   contagem de não lidas.
@@ -110,6 +129,7 @@ aparecem um ao outro na lista de conversas.
 npm run lint          # ESLint (eslint-config-expo)
 npm run format:check  # Prettier
 npm run typecheck     # tsc --noEmit
+npm run test          # Vitest (cifra: primitivos, X3DH, Double Ratchet, sessões)
 ```
 
 **Backend** (`cd backend`):
@@ -118,7 +138,15 @@ npm run typecheck     # tsc --noEmit
 source .venv/bin/activate
 ruff check .      # lint
 mypy app          # verificação de tipos
-pytest -q         # testes
+pytest -q         # testes (numa BD própria, ver abaixo)
+```
+
+O `pytest` nunca corre contra a BD de dev: `tests/conftest.py` exige
+`TEST_DATABASE_URL` no `.env` (ver `.env.example`) e recusa-se a correr se
+o nome da BD não acabar em `_test`. Criar essa BD uma vez:
+
+```bash
+docker exec -it whattspoppin-postgres createdb -U whattspoppin whattspoppin_test
 ```
 
 ## Licença
