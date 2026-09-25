@@ -14,9 +14,10 @@ conceito: >
 estado_de_implementacao:
   resumo: >
     Prova de conceito a funcionar - dois ou mais utilizadores conseguem
-    criar conta, ver-se na lista e trocar mensagens de texto em tempo real,
-    testado entre dispositivos diferentes na mesma rede local. Falta a
-    parte mais delicada (cifra) e várias peças do desenho final que foram
+    criar conta, ver-se na lista e trocar mensagens de texto 1:1 em tempo
+    real, cifradas ponta-a-ponta (X3DH + Double Ratchet próprios), testado
+    entre dispositivos diferentes na mesma rede local. O MVP definido
+    acima está cumprido; faltam várias peças do desenho final que foram
     conscientemente simplificadas para chegar aqui mais depressa.
   construido:
     - repositório com frontend (Expo + React Native + TypeScript) e backend
@@ -35,9 +36,18 @@ estado_de_implementacao:
       utilizador, sobrevivem a um refresh da página
     - UI dividida em componentes pequenos e reutilizáveis (Avatar,
       MessageBubble, GradientButton, etc.)
+    - cifra ponta-a-ponta em 1:1 - cada dispositivo publica IK, SPK
+      assinada e 20 OPKs; a primeira mensagem abre sessão X3DH, depois
+      Double Ratchet (chave nova por mensagem). Quem envia cifra um
+      envelope por dispositivo do destinatário, o servidor entrega a cada
+      um só o seu e nunca vê o texto. Detalhe e decisões em
+      Documents/plano-cifra-ponta-a-ponta.md
+    - pytest numa BD própria (TEST_DATABASE_URL, nome tem de acabar em
+      _test) - nunca toca na BD de dev
   simplificacoes_temporarias:
-    - sem cifra - mensagens em texto simples, só para validar o transporte
-      (vodozemac ainda por integrar)
+    - cifra só em 1:1 e com arestas conhecidas - inícios de sessão
+      simultâneos podem perder as mensagens que se cruzam (sem arquivo de
+      sessões), sem rotação de SPK, sem reposição automática de OPKs
     - sem federação - identificador é só o username local, sem
       user@servidor, .well-known, handshake nem federated_servers
     - sem alcunha nem deteção de ambiguidade - mostra-se sempre o nome de
@@ -54,8 +64,14 @@ estado_de_implementacao:
       IndexedDB - decisão consciente de não otimizar prematuramente
       (quota ~5-10MB, muito acima do que se está a usar agora)
   falta:
-    - cifra ponta-a-ponta (vodozemac) - provavelmente a peça mais delicada
     - fila de entrega offline + estados pending/delivered/read
+    - proteger os dados no dispositivo - hoje, na web, mensagens E chaves
+      privadas estão no localStorage sem cifra. Requisito - poder usar a
+      web em qualquer máquina, incluindo partilhadas. Desenho (fora do
+      MVP) em Documents/plano-cifra-ponta-a-ponta.md, secção "Futuro" -
+      armazenamento cifrado único, chave no Keychain/Keystore no mobile,
+      derivada de PIN (Argon2id) na web, logout que limpa tudo e desativa
+      o device
     - nome de exibição editável, alcunhas, deteção de ambiguidade
     - backup e restauro de chaves (praticamente tudo, depende da cifra)
     - multi-dispositivo - hoje cada login novo cria um Device sem ligação
@@ -103,6 +119,7 @@ stack:
     problema já identificado de correr em mobile (Hermes). Plano
     detalhado, com fases e ficheiros concretos, em
     Documents/plano-cifra-ponta-a-ponta.md. Servidor nunca vê conteúdo.
+    ESTADO (Set 2026): implementado e ligado ao envio/receção em 1:1.
   infraestrutura:
     hosting: máquina física em casa, container Docker
     reverse_proxy: Caddy (HTTPS automático via Let's Encrypt)
@@ -289,24 +306,29 @@ multi_dispositivo:
 
 esquema_de_grupos:
   mecanismo: >
-    Megolm (Sender Keys) - cada membro cifra com a sua própria sessão de
-    grupo, mensagem cifrada uma só vez independente do tamanho do grupo.
-    Escolhida em vez de fan-out (cifrar uma cópia por destinatário) porque
-    escala melhor e já vem incluída na vodozemac, sem trabalho extra de
-    biblioteca. Chave de sessão distribuída aos membros através das sessões
-    Olm 1:1 já existentes entre eles.
+    Sender Keys (a mesma ideia do Megolm) - cada membro cifra com a sua
+    própria chave de grupo, mensagem cifrada uma só vez independente do
+    tamanho do grupo. Escolhida em vez de fan-out (cifrar uma cópia por
+    dispositivo, que é o que o 1:1 faz hoje) porque o custo O(N) passa a
+    ser só quando os membros mudam, não em cada mensagem. Como a vodozemac
+    foi abandonada, terá de ser implementado por nós em cima dos mesmos
+    primitivos @noble/*. Chave de grupo distribuída aos membros através
+    das sessões Double Ratchet 1:1 já existentes entre os dispositivos.
+    Para grupos enormes (milhares de membros) a referência é o MLS
+    (RFC 9420), em que mudar membros custa O(log N) - fora de âmbito por
+    agora.
   historico_para_novos_membros: >
     não veem mensagens trocadas antes de entrarem - consistente com o resto
     do projeto (servidor nunca guarda histórico), cada sessão de grupo
     começa "limpa" para quem entra.
   rotacao_de_sessao: >
-    a sessão Megolm roda em QUALQUER mudança de membros - tanto ao entrar
+    a sender key roda em QUALQUER mudança de membros - tanto ao entrar
     como ao sair/ser removido alguém, gera-se sessão nova e reenvia-se aos
     membros atuais. Um único mecanismo para os dois casos, sem caso especial
     a mais no código. É o que garante que quem sai/é expulso deixa de
     conseguir decifrar mensagens novas.
   por_afinar:
-    - esquema de tabelas (grupo, membros, sessões Megolm por remetente)
+    - esquema de tabelas (grupo, membros, sender keys por remetente)
     - ecrã de gestão (criar grupo, adicionar/remover membro federado)
     - fica fora do MVP (que é só 1:1)
 

@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.auth import router as auth_router
 from app.api.conversations import router as conversations_router
+from app.api.devices import router as devices_router
 from app.api.ws import router as ws_router
 
 app = FastAPI(title="WatsPoppin", version="0.0.1")
@@ -21,6 +22,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(conversations_router)
+app.include_router(devices_router)
 app.include_router(ws_router)
 
 
