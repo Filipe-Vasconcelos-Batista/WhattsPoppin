@@ -6,13 +6,14 @@ from fastapi.testclient import TestClient
 
 from app.models import PendingMessage
 from app.services import outbox
-from tests.helpers import conversation, envelope, register, wait_until
+from tests.helpers import conversation, envelope, outgoing, register, wait_until
 
 
 def _payload(sender: dict[str, Any], conversation_id: str, n: int) -> dict[str, Any]:
     return {
         "type": "message",
         "conversation_id": conversation_id,
+        "client_message_id": str(uuid.uuid4()),
         "sender_device_id": sender["device_id"],
         "header": {"dh": "ZA==", "pn": 0, "n": n},
         "ciphertext": f"ciphertext-{n}",
@@ -30,9 +31,7 @@ def test_offline_recipient_receives_message_on_connect(ws_client: TestClient) ->
     conversation_id = conversation(alice, bob)
 
     with ws_client.websocket_connect(f"/ws?device_id={alice['device_id']}") as alice_ws:
-        alice_ws.send_json(
-            {"conversation_id": conversation_id, "envelopes": [envelope(bob["device_id"], 0)]}
-        )
+        alice_ws.send_json(outgoing(conversation_id, envelope(bob["device_id"], 0)))
         wait_until(lambda: len(_pending_ids(bob)) == 1)
 
     with ws_client.websocket_connect(f"/ws?device_id={bob['device_id']}") as bob_ws:
@@ -112,9 +111,7 @@ def test_live_delivery_stays_pending_until_ack(ws_client: TestClient) -> None:
         ws_client.websocket_connect(f"/ws?device_id={alice['device_id']}") as alice_ws,
         ws_client.websocket_connect(f"/ws?device_id={bob['device_id']}") as bob_ws,
     ):
-        alice_ws.send_json(
-            {"conversation_id": conversation_id, "envelopes": [envelope(bob["device_id"], 0)]}
-        )
+        alice_ws.send_json(outgoing(conversation_id, envelope(bob["device_id"], 0)))
         received = bob_ws.receive_json()
         assert [str(message_id) for message_id in _pending_ids(bob)] == [received["message_id"]]
 

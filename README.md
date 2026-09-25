@@ -84,6 +84,15 @@ aparecem um ao outro na lista de conversas.
   servidor entrega a cada um só o seu e nunca vê o texto.
 - A lista atualiza-se sozinha quando alguém novo se regista, sem refresh.
 - O WebSocket reconecta-se sozinho se o backend reiniciar.
+- **Fila offline:** mensagens para quem não está ligado ficam guardadas no
+  servidor (só o envelope cifrado) e são entregues quando o dispositivo se
+  liga. Cada dispositivo confirma (ack) o que recebeu e só então a mensagem
+  sai do servidor; o que nunca é confirmado expira ao fim de 30 dias.
+- **Estados de mensagem** na bolha, como no WhatsApp: relógio (ainda não
+  saiu do dispositivo), ✓ (o servidor guardou), ✓✓ (chegou a um
+  dispositivo do destinatário), ✓✓ colorido (lida). Se o teu socket estiver
+  em baixo, a mensagem fica numa outbox local e sai sozinha quando voltar a
+  ligar — cifrada uma só vez, reenviada com os mesmos bytes.
 - Mensagens persistem no dispositivo (por utilizador), sobrevivem a um
   refresh da página.
 
@@ -112,8 +121,10 @@ aparecem um ao outro na lista de conversas.
 - **Sem indicação fora da conversa.** Uma mensagem só aparece se tiveres o
   ecrã dessa conversa aberto — a lista não mostra pré-visualização real nem
   contagem de não lidas.
-- **Sem estados de mensagem.** Não há pending/delivered/read, nem fila de
-  entrega quando o destinatário está offline — a mensagem perde-se.
+- **Recibos de leitura sempre ligados.** Ainda não há a opção de os
+  desligar (como no WhatsApp), nem estado "falhou" visível — uma mensagem
+  que não se consegue cifrar (ex.: destinatário sem chaves) fica com o
+  relógio.
 - **Sem alcunhas nem deteção de ambiguidade de nomes.**
 - **Um só dispositivo por utilizador**, sem multi-dispositivo a sério.
 - **Registo aberto**, sem código de convite nem aprovação de admin.

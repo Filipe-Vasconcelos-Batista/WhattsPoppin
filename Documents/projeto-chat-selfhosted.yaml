@@ -44,6 +44,16 @@ estado_de_implementacao:
       Documents/plano-cifra-ponta-a-ponta.md
     - pytest numa BD própria (TEST_DATABASE_URL, nome tem de acabar em
       _test) - nunca toca na BD de dev
+    - fila offline no servidor (tabela pending_messages) - uma linha por
+      envelope cifrado por device destinatário, entregue ao ligar por ordem
+      de created_at, apagada só com ack desse device (logo, só sai do
+      servidor quando TODOS os devices confirmarem). Cliente deduplica por
+      (sender_device_id, client_message_id). Expira ao fim de 30 dias sem ack
+    - estados de mensagem pending/sent/delivered/read na bolha - outbox local
+      de quem envia (cifra uma vez, reenvia os mesmos bytes ao religar),
+      "sent" quando o servidor guarda, "delivered" gerado pelo servidor no ack
+      do destinatário, "read" quando o destinatário abre a conversa. Recibos
+      passam pela mesma fila (pending_messages); só levam ids, nunca conteúdo
   simplificacoes_temporarias:
     - cifra só em 1:1 e com arestas conhecidas - inícios de sessão
       simultâneos podem perder as mensagens que se cruzam (sem arquivo de
@@ -54,17 +64,14 @@ estado_de_implementacao:
       exibição (= username escolhido no registo)
     - registo aberto, sem código de convite nem aprovação de admin
     - ecrã de login sem campo "Servidor" (assume-se sempre este servidor)
-    - sem estados de mensagem (pending/delivered/read) - fica só "enviada"
-    - sem fila de entrega offline - se o destinatário não estiver ligado
-      no momento, a mensagem perde-se (o outbox desenhado em
-      mensagens_entrega_e_estado ainda não existe)
+    - recibos de leitura sempre ligados (sem opção de privacidade) e sem
+      estado "falhou" - uma mensagem que não se consegue cifrar fica pending
     - indicador "a escrever" existe como componente mas não está ligado a
       nenhum evento real
     - mensagens no cliente ficam em localStorage/AsyncStorage, não
       IndexedDB - decisão consciente de não otimizar prematuramente
       (quota ~5-10MB, muito acima do que se está a usar agora)
   falta:
-    - fila de entrega offline + estados pending/delivered/read
     - proteger os dados no dispositivo - hoje, na web, mensagens E chaves
       privadas estão no localStorage sem cifra. Requisito - poder usar a
       web em qualquer máquina, incluindo partilhadas. Desenho (fora do

@@ -10,6 +10,7 @@ import { LoadingState } from '../../components/LoadingState';
 import { MessageInputBar } from '../../components/chat/MessageInputBar';
 import { MessageList } from '../../components/chat/MessageList';
 import { useIdentity } from '../../context/IdentityContext';
+import { useIsAppActive } from '../../hooks/useIsAppActive';
 import { colors } from '../../theme/colors';
 import type { Contact } from '../../types/chat';
 
@@ -30,6 +31,18 @@ export default function ConversationScreen() {
       cancelled = true;
     };
   }, [identity.userId, otherUserId]);
+
+  const { markConversationRead } = identity;
+  const appActive = useIsAppActive();
+  const conversationMessageCount = identity.messages.filter(
+    (message) => message.conversationId === conversationId,
+  ).length;
+
+  // Com o ecrã aberto E a app à vista, o que chega conta como lido (recibo de
+  // leitura para quem enviou). Ao voltar à aba, marca o que chegou entretanto.
+  useEffect(() => {
+    if (conversationId && appActive) markConversationRead(conversationId);
+  }, [conversationId, conversationMessageCount, appActive, markConversationRead]);
 
   if (identity.loading) return <LoadingState />;
   if (!identity.authenticated) return <Redirect href="/login" />;

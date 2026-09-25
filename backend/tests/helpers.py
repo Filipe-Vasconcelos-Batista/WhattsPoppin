@@ -66,6 +66,16 @@ def envelope(device_id: str, n: int) -> dict[str, Any]:
     }
 
 
+def outgoing(
+    conversation_id: str, *envelopes: dict[str, Any], client_message_id: str | None = None
+) -> dict[str, Any]:
+    return {
+        "conversation_id": conversation_id,
+        "client_message_id": client_message_id or str(uuid.uuid4()),
+        "envelopes": list(envelopes),
+    }
+
+
 # O servidor processa o que recebe pelo socket de forma assíncrona - para
 # confirmar um efeito (ex.: ack apagou a linha) espera-se até ele aparecer.
 def wait_until(condition: Callable[[], bool], timeout: float = 2.0) -> None:

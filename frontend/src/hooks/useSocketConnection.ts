@@ -10,12 +10,15 @@ const RECONNECT_DELAY_MS = 1500;
 export function useSocketConnection(
   deviceId: string | null,
   onPayload: (payload: unknown) => void,
+  onOpen?: () => void,
 ) {
   const socketRef = useRef<WebSocket | null>(null);
   const onPayloadRef = useRef(onPayload);
+  const onOpenRef = useRef(onOpen);
 
   useEffect(() => {
     onPayloadRef.current = onPayload;
+    onOpenRef.current = onOpen;
   });
 
   useEffect(() => {
@@ -27,6 +30,7 @@ export function useSocketConnection(
     function connect() {
       const socket = new WebSocket(`${WS_URL}/ws?device_id=${deviceId}`);
       socketRef.current = socket;
+      socket.onopen = () => onOpenRef.current?.();
       socket.onmessage = (event) => onPayloadRef.current(JSON.parse(event.data));
       socket.onclose = () => {
         if (cancelled) return;
@@ -44,8 +48,14 @@ export function useSocketConnection(
     };
   }, [deviceId]);
 
-  function send(payload: Record<string, unknown>) {
-    socketRef.current?.send(JSON.stringify(payload));
+  // Fora de OPEN, o browser lança erro (CONNECTING) ou descarta em silêncio
+  // (CLOSED). Aqui não se envia e devolve-se false - quem chama decide se
+  // guarda para depois (a outbox guarda; os acks são reentregues ao religar).
+  function send(payload: Record<string, unknown>): boolean {
+    const socket = socketRef.current;
+    if (socket?.readyState !== WebSocket.OPEN) return false;
+    socket.send(JSON.stringify(payload));
+    return true;
   }
 
   return { send };

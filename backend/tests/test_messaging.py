@@ -6,6 +6,7 @@ from tests.helpers import (
     conversation,
     envelope,
     login_new_device,
+    outgoing,
     publish_keys,
     register,
 )
@@ -41,13 +42,11 @@ def test_websocket_routes_each_envelope_only_to_its_device(ws_client: TestClient
         ws_client.websocket_connect(f"/ws?device_id={bob_second['device_id']}") as bob_second_ws,
     ):
         alice_ws.send_json(
-            {
-                "conversation_id": conversation_id,
-                "envelopes": [
-                    envelope(bob["device_id"], 0),
-                    envelope(bob_second["device_id"], 1),
-                ],
-            }
+            outgoing(
+                conversation_id,
+                envelope(bob["device_id"], 0),
+                envelope(bob_second["device_id"], 1),
+            )
         )
 
         to_bob = bob_ws.receive_json()
@@ -78,12 +77,8 @@ def test_websocket_drops_envelopes_for_devices_outside_theconversation(
         # Envelope para o outsider numa conversa em que ele não está - tem de
         # ser descartado. A seguir, uma mensagem legítima para ele: tem de ser
         # essa a primeira coisa que recebe.
-        alice_ws.send_json(
-            {"conversation_id": alice_bob, "envelopes": [envelope(outsider["device_id"], 7)]}
-        )
-        alice_ws.send_json(
-            {"conversation_id": alice_outsider, "envelopes": [envelope(outsider["device_id"], 0)]}
-        )
+        alice_ws.send_json(outgoing(alice_bob, envelope(outsider["device_id"], 7)))
+        alice_ws.send_json(outgoing(alice_outsider, envelope(outsider["device_id"], 0)))
 
         received = outsider_ws.receive_json()
 
@@ -101,9 +96,7 @@ def test_websocket_ignores_malformed_payloads(ws_client: TestClient) -> None:
         ws_client.websocket_connect(f"/ws?device_id={bob['device_id']}") as bob_ws,
     ):
         alice_ws.send_json({"conversation_id": conversation_id, "text": "texto simples antigo"})
-        alice_ws.send_json(
-            {"conversation_id": conversation_id, "envelopes": [envelope(bob["device_id"], 0)]}
-        )
+        alice_ws.send_json(outgoing(conversation_id, envelope(bob["device_id"], 0)))
 
         received = bob_ws.receive_json()
 
