@@ -46,7 +46,6 @@ def register(username: str, password: str) -> Identity:
         username=username,
         display_name=username,
         password_hash=_hash_password(password),
-        identity_public_key=b"",
     )
     token, device = _create_device_for(user)
     return Identity(

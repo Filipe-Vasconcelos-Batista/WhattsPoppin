@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 
 import { loginUser, registerUser, resumeSession, type UserSummary } from '../api/auth';
+import { generateAndPublishDeviceKeys } from '../crypto/keys';
 import { useSocketConnection } from '../hooks/useSocketConnection';
 import { loadMessages, saveMessages } from '../storage/messageStore';
 import { formatTimeNow } from '../utils/time';
@@ -108,6 +109,9 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
       session.display_name,
       session.other_users,
     );
+    generateAndPublishDeviceKeys(session.device_id, session.token).catch((error) => {
+      console.warn('Falha ao gerar/publicar chaves E2E do dispositivo:', error);
+    });
   }
 
   async function register(username: string, password: string) {
@@ -119,6 +123,9 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
       session.display_name,
       session.other_users,
     );
+    generateAndPublishDeviceKeys(session.device_id, session.token).catch((error) => {
+      console.warn('Falha ao gerar/publicar chaves E2E do dispositivo:', error);
+    });
   }
 
   const handlePayload = useCallback((raw: unknown) => {

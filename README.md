@@ -24,8 +24,7 @@ nesta primeira versão — tudo o resto constrói-se por cima disto.
 | Frontend (web → mobile → desktop) | React Native + Expo, TypeScript |
 | Backend | Python + FastAPI (WebSockets nativos, async) |
 | Base de dados | PostgreSQL, via [Peewee](https://docs.peewee-orm.com/) (síncrono, chamado a partir do FastAPI com `run_in_threadpool`) |
-| Cifra ponta-a-ponta | [vodozemac](https://github.com/matrix-org/vodozemac) (Olm 1:1 + Megolm grupos) — ainda por integrar |
-| Ponte nativa de cifra em mobile (pós-MVP) | Rust (JSI) — WASM não corre no motor Hermes do React Native |
+| Cifra ponta-a-ponta | Double Ratchet + X3DH implementados de raiz (specs do Signal), sobre `@noble/curves`/`@noble/hashes`/`@noble/ciphers` (JS puro, sem WASM) — primitivos e publicação de chaves prontos, falta ligar ao envio/receção de mensagens (ver [`Documents/plano-cifra-ponta-a-ponta.md`](./Documents/plano-cifra-ponta-a-ponta.md)) |
 | Infraestrutura | Docker, Caddy (reverse proxy + HTTPS automático via Let's Encrypt) |
 
 ## Ordem de plataformas
@@ -85,8 +84,12 @@ aparecem um ao outro na lista de conversas.
 
 ## Limitações conhecidas
 
-- **Sem cifra.** As mensagens viajam em texto simples — só para validar o
-  transporte. A vodozemac ainda não está integrada.
+- **Sem cifra ligada ao envio/receção de mensagens.** As mensagens ainda
+  viajam em texto simples — a implementação própria de Double Ratchet +
+  X3DH está em curso (ver
+  [`Documents/plano-cifra-ponta-a-ponta.md`](./Documents/plano-cifra-ponta-a-ponta.md)):
+  primitivos criptográficos e publicação das chaves de cada dispositivo já
+  feitos, falta X3DH, Double Ratchet e ligar tudo a `sendMessage`/receção.
 - **Sem indicação fora da conversa.** Uma mensagem só aparece se tiveres o
   ecrã dessa conversa aberto — a lista não mostra pré-visualização real nem
   contagem de não lidas.

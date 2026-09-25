@@ -18,6 +18,15 @@ class Device(BaseModel):
     is_active = pw.BooleanField(default=True)
     registered_at = pw.DateTimeField(default=lambda: datetime.now(UTC))
     last_seen_at = pw.DateTimeField(null=True)
+    # Chaves de sessão E2E (X3DH) publicadas pelo dispositivo - ver
+    # plano-cifra-ponta-a-ponta.md. identity_key é a chave pública Ed25519
+    # (IK); signed_prekey é X25519 (SPK), assinado com a IK
+    # (signed_prekey_signature). signed_prekey_id identifica a versão do
+    # SPK em uso, para permitir rotação futura.
+    identity_key = pw.BlobField(null=True)
+    signed_prekey = pw.BlobField(null=True)
+    signed_prekey_signature = pw.BlobField(null=True)
+    signed_prekey_id = pw.IntegerField(null=True)
 
     class Meta:
         table_name = "devices"

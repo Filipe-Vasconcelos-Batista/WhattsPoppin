@@ -102,20 +102,56 @@ chegarmos à Fase 2.
 
 ## Plano de fases
 
-- [ ] **Fase 1 - Primitivos**
+- [x] **Fase 1 - Primitivos** (completa, commitada)
   - Instalar `@noble/curves`, `@noble/hashes`, `@noble/ciphers`
   - `src/crypto/primitives.ts` com funções puras: `generateKeyPair()`,
     `dh(privateKey, publicKey)`, `hkdfRk(rk, dhOut)`, `hmacCk(ck)`,
     `aeadEncrypt(key, plaintext, ad)`, `aeadDecrypt(key, ciphertext, ad)`
   - Testes: DH(a,b) == DH(b,a); encrypt→decrypt dá o texto original;
     outputs têm o tamanho certo (32 bytes para chaves, etc.)
+  - Decisões tomadas pelo caminho: Vitest (não `jest-expo`) para lógica
+    pura sem RN, por ser ESM nativo e não precisar do
+    `transformIgnorePatterns` que o `jest-expo` exigiria para os
+    `@noble/*`; Node do projecto migrado para 24 via `.nvmrc`
+    (`frontend/.nvmrc`, `nvm use`), independente do Node global da
+    máquina, para poder usar o Vitest mais recente.
 
-- [ ] **Fase 2 - Chaves e publicação**
-  - Migração `add_e2e_keys` (campos no `Device` + tabela `OneTimePrekey`)
-  - `POST /devices/{id}/keys` e `GET /devices/{id}/prekey-bundle` no backend
-  - `src/crypto/keys.ts` - gera as chaves ao criar conta, publica as
-    públicas, guarda as privadas em AsyncStorage (nota: sensível - ver se
-    vale a pena isolar isto de `messageStore.ts` numa chave própria)
+- [x] **Fase 2 - Chaves e publicação** (completa, testada, **por commitar**)
+  - Migração `004_add_e2e_keys` (campos no `Device` + tabela
+    `OneTimePrekey`) - já corrida contra a BD de dev
+  - `POST /devices/{id}/keys` e `GET /devices/{id}/prekey-bundle` no
+    backend (`app/api/devices.py` + `app/services/keys.py`) -
+    `pytest -q`: 5 passed
+  - `src/crypto/keys.ts` - gera as chaves ao criar conta (chamado em
+    `register()`/`login()` do `IdentityContext`, nunca em
+    `resumeSession()` - cada login novo já cria um `Device` novo, ver
+    limitação conhecida em `projeto-chat-selfhosted.yaml`), publica as
+    públicas, guarda as privadas em AsyncStorage
+  - `src/crypto/encoding.ts` - base64 ↔ Uint8Array escrito à mão (sem
+    `Buffer`/`atob`/`btoa`, indisponíveis no Hermes/RN, sem nova
+    dependência)
+  - Decisões tomadas pelo caminho, que desviam ligeiramente do desenho
+    original acima:
+    - **`POST /devices/{id}/keys` verifica `client_token`** contra o
+      `Device` (403 se não bater, 404 se o device não existir) - sem
+      isto, qualquer um podia publicar chaves falsas para o `device_id`
+      de outra pessoa e quebrar a autenticidade da cifra na raiz (nenhum
+      outro endpoint desta API verifica dono nenhum, mas este caso era
+      grave demais para herdar essa simplificação)
+    - **`key_id` das OPKs é aleatório** (32 bits), não uma sequência
+      `1..N` reiniciada a cada chamada - e `storeDeviceKeys()` faz
+      *merge* com as OPKs já guardadas localmente em vez de as substituir.
+      Prepara o terreno para uma futura reposição periódica de OPKs (ainda
+      não construída) sem perder chaves privadas de OPKs antigas ainda por
+      consumir
+    - Removido o campo morto `User.identity_public_key` (nunca chegou a
+      ser usado - a chave de identidade vive no `Device`, como este plano
+      sempre disse)
+  - **Nota para a Fase 5:** como `find_recipient_device_ids` já devolve
+    todos os dispositivos activos de um utilizador, uma vez a cifra ligada
+    ao envio de mensagens, quem envia terá de cifrar **uma vez por
+    dispositivo destinatário**, não uma vez por conversa - relevante assim
+    que multi-dispositivo deixar de ser "um só dispositivo por utilizador"
 
 - [ ] **Fase 3 - X3DH**
   - `src/crypto/x3dh.ts` - implementar `initiateSession()` (Alice: busca o
@@ -141,7 +177,15 @@ chegarmos à Fase 2.
 
 ## Onde ficámos
 
-Ainda em nenhuma fase - isto é o plano, escrito antes de começar a Fase 1.
-Próxima sessão: começar pela **Fase 1** (`src/crypto/primitives.ts`),
-instalar as três bibliotecas e escrever os primitivos com testes antes de
-tocar em X3DH ou no Double Ratchet propriamente ditos.
+**Estado em 2026-09-25:** Fase 1 e Fase 2 completas. Código escrito,
+lint/typecheck/testes do frontend a passar, `ruff`/`mypy` do backend a
+passar, migração `004_add_e2e_keys` já corrida contra a BD de dev, e
+`pytest -q` a dar 5 passed. **Falta:** o teste manual ponta-a-ponta (criar
+conta com backend+frontend a correr, confirmar no Postgres que o `Device`
+fica com `identity_key`/`signed_prekey` preenchidos e 20 linhas em
+`one_time_prekeys`, e que duas chamadas seguidas a
+`GET /devices/{id}/prekey-bundle` devolvem `one_time_prekey_id`
+diferentes) e o **commit** - nada da Fase 2 está commitado ainda.
+
+Próxima sessão: fazer o teste manual acima, commitar a Fase 2, e depois
+avançar para a **Fase 3 - X3DH** (`src/crypto/x3dh.ts`).
