@@ -77,10 +77,22 @@ describe('deriveInitiatorSharedKey / deriveResponderSharedKey', () => {
     const aliceEphemeralKey = generateKeyPair();
 
     const alice = deriveInitiatorSharedKey(aliceIdentityKey, aliceEphemeralKey, bundleFromDevice(bob, opk));
-    const bobSharedKey = deriveResponderSharedKey(localKeysFromDevice(bob, opk), alice.initialMessage);
+    const bobResult = deriveResponderSharedKey(localKeysFromDevice(bob, opk), alice.initialMessage);
 
-    expect(bobSharedKey).toEqual(alice.sharedKey);
+    expect(bobResult.sharedKey).toEqual(alice.sharedKey);
     expect(alice.sharedKey.length).toBe(32);
+  });
+
+  it('Alice e Bob chegam ao mesmo AD (IK_A || IK_B) e Alice fica com a SPK de Bob como chave ratchet', () => {
+    const bob = generateDeviceKeys();
+    const aliceIdentityKey = edKeyPair();
+
+    const alice = deriveInitiatorSharedKey(aliceIdentityKey, generateKeyPair(), bundleFromDevice(bob, null));
+    const bobResult = deriveResponderSharedKey(localKeysFromDevice(bob, null), alice.initialMessage);
+
+    expect(bobResult.associatedData).toEqual(alice.associatedData);
+    expect(alice.associatedData.length).toBe(64);
+    expect(alice.remoteRatchetKey).toEqual(bob.signedPrekey.publicKey);
   });
 
   it('Alice e Bob chegam à mesma SK (sem one-time prekey - pool esgotado)', () => {
@@ -89,9 +101,9 @@ describe('deriveInitiatorSharedKey / deriveResponderSharedKey', () => {
     const aliceEphemeralKey = generateKeyPair();
 
     const alice = deriveInitiatorSharedKey(aliceIdentityKey, aliceEphemeralKey, bundleFromDevice(bob, null));
-    const bobSharedKey = deriveResponderSharedKey(localKeysFromDevice(bob, null), alice.initialMessage);
+    const bobResult = deriveResponderSharedKey(localKeysFromDevice(bob, null), alice.initialMessage);
 
-    expect(bobSharedKey).toEqual(alice.sharedKey);
+    expect(bobResult.sharedKey).toEqual(alice.sharedKey);
   });
 
   it('a SK com OPK é diferente da SK sem OPK, para o mesmo par de identidades', () => {
@@ -163,12 +175,13 @@ describe('initiateSession / receiveInitialMessage', () => {
     });
 
     const aliceResult = await initiateSession({ myDeviceId: aliceDeviceId, recipientDeviceId: bobDeviceId });
-    const bobSharedKey = await receiveInitialMessage({
+    const bobResult = await receiveInitialMessage({
       myDeviceId: bobDeviceId,
       initialMessage: aliceResult.initialMessage,
     });
 
-    expect(bobSharedKey).toEqual(aliceResult.sharedKey);
+    expect(bobResult.sharedKey).toEqual(aliceResult.sharedKey);
+    expect(bobResult.associatedData).toEqual(aliceResult.associatedData);
   });
 
   it('a OPK usada deixa de estar disponível localmente para Bob depois de consumida', async () => {

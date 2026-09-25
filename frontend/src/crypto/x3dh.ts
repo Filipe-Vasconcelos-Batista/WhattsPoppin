@@ -54,7 +54,14 @@ export interface X3dhInitialMessage {
 
 export interface X3dhInitiatorResult {
   sharedKey: Uint8Array; // SK, 32 bytes
+  associatedData: Uint8Array; // AD = IK_A || IK_B
+  remoteRatchetKey: Uint8Array; // SPK_B - chave ratchet inicial de Bob no Double Ratchet
   initialMessage: X3dhInitialMessage;
+}
+
+export interface X3dhResponderResult {
+  sharedKey: Uint8Array;
+  associatedData: Uint8Array; // AD = IK_A || IK_B, igual ao de Alice
 }
 
 function combineDhOutputs(dh1: Uint8Array, dh2: Uint8Array, dh3: Uint8Array, dh4: Uint8Array | null): Uint8Array {
@@ -87,6 +94,8 @@ export function deriveInitiatorSharedKey(
 
   return {
     sharedKey: kdfX3dh(combineDhOutputs(dh1, dh2, dh3, dh4)),
+    associatedData: concatBytes(aliceIdentityKey.publicKey, bobBundle.identityKey),
+    remoteRatchetKey: bobBundle.signedPrekey,
     initialMessage: {
       identityKey: aliceIdentityKey.publicKey,
       ephemeralKey: aliceEphemeralKey.publicKey,
@@ -109,7 +118,7 @@ export interface X3dhResponderLocalKeys {
 export function deriveResponderSharedKey(
   bobLocalKeys: X3dhResponderLocalKeys,
   initialMessage: X3dhInitialMessage,
-): Uint8Array {
+): X3dhResponderResult {
   const wantsOpk = initialMessage.oneTimePrekeyId !== null;
   if (wantsOpk && !bobLocalKeys.oneTimePrekeyPrivate) {
     throw new Error('Mensagem inicial refere uma one-time prekey que já não existe localmente');
@@ -125,7 +134,10 @@ export function deriveResponderSharedKey(
     ? dh(bobLocalKeys.oneTimePrekeyPrivate, initialMessage.ephemeralKey) // OPK_B x EK_A
     : null;
 
-  return kdfX3dh(combineDhOutputs(dh1, dh2, dh3, dh4));
+  return {
+    sharedKey: kdfX3dh(combineDhOutputs(dh1, dh2, dh3, dh4)),
+    associatedData: concatBytes(initialMessage.identityKey, bobLocalKeys.identityKey.publicKey),
+  };
 }
 
 export interface InitiateSessionParams {
@@ -169,7 +181,7 @@ export interface ReceiveInitialMessageParams {
 
 // Wrapper de I/O do lado de Bob: carrega as chaves locais, consome a OPK
 // usada e chama o núcleo puro.
-export async function receiveInitialMessage(params: ReceiveInitialMessageParams): Promise<Uint8Array> {
+export async function receiveInitialMessage(params: ReceiveInitialMessageParams): Promise<X3dhResponderResult> {
   const myKeys = await loadDeviceKeys(params.myDeviceId);
   if (!myKeys) throw new Error('Chaves locais não encontradas - gera as chaves primeiro');
 

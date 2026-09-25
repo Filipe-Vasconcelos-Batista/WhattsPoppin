@@ -168,7 +168,7 @@ chegarmos à Fase 2.
     automaticamente quando ficam poucas - fica para uma fase futura,
     fora do âmbito da Fase 3/4/5
 
-- [x] **Fase 3 - X3DH** (completa, testada, **por commitar**)
+- [x] **Fase 3 - X3DH** (completa, testada, commitada)
   - `src/crypto/x3dh.ts` - `initiateSession()` (Alice) e
     `receiveInitialMessage()` (Bob), separados em núcleo puro
     (`deriveInitiatorSharedKey`/`deriveResponderSharedKey`, sem I/O,
@@ -202,14 +202,43 @@ chegarmos à Fase 2.
     - `fetchPrekeyBundle` novo em `api/devices.ts` - sem alterações ao
       backend, o endpoint da Fase 2 já devolve tudo o que é preciso
 
-- [ ] **Fase 4 - Double Ratchet**
+- [x] **Fase 4 - Double Ratchet** (completa, testada, **por commitar**)
   - `src/crypto/doubleRatchet.ts` - estado completo (DHs, DHr, RK, CKs,
-    CKr, Ns, Nr, PN, MKSKIPPED) e as quatro operações do spec
-  - `src/crypto/sessionStore.ts` - persistir/carregar o estado por par de
-    dispositivos
-  - Teste: simular uma conversa longa (10+ mensagens), incluindo mensagens
-    fora de ordem e uma "perdida" (salta um número), confirmar que decifra
-    tudo correctamente nos dois lados
+    CKr, Ns, Nr, PN, MKSKIPPED) e as operações da spec (`initAlice`,
+    `initBob`, `ratchetEncrypt`, `ratchetDecrypt`, com
+    TrySkippedMessageKeys, SkipMessageKeys e DHRatchet internos)
+  - `src/crypto/sessionStore.ts` - `saveSession`/`loadSession`/
+    `deleteSession` por par de dispositivos (chave
+    `whattspoppin.session.<meu>.<outro>`), JSON com base64
+  - Testes (`doubleRatchet.test.ts`, `sessionStore.test.ts`, sessões
+    criadas a partir de um X3DH real via `testUtils.ts`): conversa de 13
+    mensagens alternadas e em rajadas; fora de ordem na mesma cadeia e
+    entre passos de DH; mensagem perdida; replay rejeitado; ciphertext e
+    cabeçalho adulterados rejeitados sem estragar o estado; MAX_SKIP;
+    round-trip do estado guardado com chaves saltadas e conversa a
+    continuar depois de recarregar
+  - Decisões tomadas pelo caminho:
+    - **Estado imutável**: cada operação devolve um estado novo em vez de
+      mutar - se a decifra falhar, o estado anterior fica intacto (a spec
+      exige descartar alterações em caso de erro). Quem chama só persiste
+      depois de sucesso
+    - **O par ratchet inicial de Bob é a signed prekey dele**, como a
+      spec manda - `X3dhInitiatorResult` passou a expor
+      `remoteRatchetKey` (SPK de Bob) e `associatedData`, e
+      `deriveResponderSharedKey`/`receiveInitialMessage` passaram a
+      devolver `{ sharedKey, associatedData }`
+    - **AD = IK_A || IK_B** (do X3DH), e o AD de cada mensagem é
+      `AD || encodeHeader(header)` - cabeçalho com tamanho fixo de 40
+      bytes (dh 32 + pn 4 + n 4, big-endian), por isso adulterar o
+      cabeçalho faz a decifra falhar
+    - `MAX_SKIP = 1000` por cadeia; contadores do cabeçalho validados
+      (inteiros entre 0 e 2^32-1)
+  - **Nota para a Fase 5:** a SPK é também o primeiro par ratchet de Bob,
+    por isso uma futura rotação de SPK tem de manter a privada antiga até
+    as sessões que dela dependem terem avançado. Também ainda não há
+    limite global ao tamanho de MKSKIPPED (a spec sugere apagar chaves
+    saltadas antigas ao fim de algum tempo/número) - fica para quando
+    houver tráfego real
 
 - [ ] **Fase 5 - Ligar ao resto da app**
   - Trocar o payload do WebSocket (texto simples → `{ciphertext, header}`)
@@ -219,12 +248,13 @@ chegarmos à Fase 2.
 
 ## Onde ficámos
 
-**Estado em 2026-09-25:** Fase 1, Fase 2 e Fase 3 completas e testadas.
-`npm run test` (51 testes), `npx tsc --noEmit` e `npx expo lint` todos
-limpos no frontend. **Falta:** o commit - nada da Fase 3 está commitado
-ainda (a Fase 2 já foi commitada entretanto).
+**Estado em 2026-09-25:** Fases 1 a 4 completas e testadas.
+`npm run test` (69 testes), `npx tsc --noEmit` e `npx expo lint` todos
+limpos no frontend. **Falta:** o commit da Fase 4 (as Fases 1-3 já estão
+commitadas).
 
-Próxima sessão: commitar a Fase 3, e depois avançar para a
-**Fase 4 - Double Ratchet** (`src/crypto/doubleRatchet.ts` +
-`src/crypto/sessionStore.ts`), usando a SK desta fase como root key
-inicial.
+Próxima sessão: commitar a Fase 4 e avançar para a **Fase 5 - ligar ao
+resto da app** (payload do WebSocket passa a `{ciphertext, header}`,
+`IdentityContext` cifra em `sendMessage()` e decifra em
+`handlePayload()`, a primeira mensagem de uma sessão leva também a
+`X3dhInitialMessage`, e cifra-se uma vez por dispositivo destinatário).
