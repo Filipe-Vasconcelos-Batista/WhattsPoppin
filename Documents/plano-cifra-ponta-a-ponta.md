@@ -202,7 +202,7 @@ chegarmos à Fase 2.
     - `fetchPrekeyBundle` novo em `api/devices.ts` - sem alterações ao
       backend, o endpoint da Fase 2 já devolve tudo o que é preciso
 
-- [x] **Fase 4 - Double Ratchet** (completa, testada, **por commitar**)
+- [x] **Fase 4 - Double Ratchet** (completa, testada, commitada)
   - `src/crypto/doubleRatchet.ts` - estado completo (DHs, DHr, RK, CKs,
     CKr, Ns, Nr, PN, MKSKIPPED) e as operações da spec (`initAlice`,
     `initBob`, `ratchetEncrypt`, `ratchetDecrypt`, com
@@ -240,21 +240,68 @@ chegarmos à Fase 2.
     saltadas antigas ao fim de algum tempo/número) - fica para quando
     houver tráfego real
 
-- [ ] **Fase 5 - Ligar ao resto da app**
-  - Trocar o payload do WebSocket (texto simples → `{ciphertext, header}`)
-  - `IdentityContext`: cifrar em `sendMessage()`, decifrar em
-    `handlePayload()`
-  - Testar entre duas contas a sério (não só testes automáticos)
+- [x] **Fase 5 - Ligar ao resto da app** (código e testes automáticos
+  feitos; **falta o `pytest` na BD de teste e o teste manual**; por commitar)
+  - **BD de teste isolada:** `backend/tests/conftest.py` força o `pytest` a
+    usar `TEST_DATABASE_URL` e aborta se não existir ou se o nome da BD não
+    acabar em `_test`. Corre as migrações e faz `TRUNCATE` no início de cada
+    execução. Criar a BD:
+    `docker exec -it whattspoppin-postgres createdb -U whattspoppin whattspoppin_test`
+    e copiar `TEST_DATABASE_URL` do `.env.example` para o `.env`
+  - **Protocolo do WebSocket:** o cliente manda
+    `{conversation_id, envelopes: [{device_id, header, ciphertext, x3dh}]}`,
+    um envelope por dispositivo destinatário. O servidor entrega a cada device
+    só o seu envelope, com `sender_device_id` tirado da ligação (nunca do
+    cliente). Descarta envelopes para devices que não são participantes da
+    conversa e ignora payloads mal formados. Nunca vê texto
+  - **Endpoint novo:** `GET /conversations/{id}/devices?device_id=<o meu>`
+    devolve os devices dos outros participantes que estão activos e com
+    chaves publicadas
+  - **`crypto/messaging.ts`:** `encryptForConversation` e `decryptIncoming`,
+    ambos numa fila em série, porque cada operação lê e grava a sessão e duas
+    em paralelo perderiam uma escrita. A fila também preserva a ordem do
+    WebSocket
+  - **Prelúdio X3DH repetido:** Alice põe o prelúdio em todas as mensagens
+    até decifrar a primeira resposta de Bob, como o Signal recomenda. Assim,
+    se a primeira mensagem se perder, a seguinte ainda abre a sessão. Bob
+    distingue "prelúdio repetido" de "sessão nova" pela EK de Alice, guardada
+    no `SessionRecord`
+  - **A OPK só é gasta depois de a primeira mensagem decifrar:**
+    `receiveInitialMessage` ganhou `consumeOneTimePrekey: false`, para uma
+    mensagem adulterada não queimar a OPK e impedir a legítima de abrir a
+    sessão
+  - **`IdentityContext`:** a mensagem aparece logo no ecrã de quem envia e é
+    cifrada e enviada em segundo plano. Uma mensagem que não decifra aparece
+    como `[mensagem não pôde ser decifrada]` e gera um `console.warn`
+  - Testes: `messaging.test.ts` (8 testes, entre dispositivos simulados) e
+    `backend/tests/test_messaging.py` (endpoint, routing por device,
+    descarte de envelopes fora da conversa, payloads mal formados)
+  - **Limitações conhecidas, que ficam para depois:**
+    - *Inícios simultâneos:* se A e B abrirem sessão um com o outro ao mesmo
+      tempo, a última sessão recebida substitui a outra, e as mensagens que se
+      cruzarem podem não decifrar. O Signal resolve isto com um arquivo de
+      sessões
+    - *Devices antigos:* cada login cria um device novo e os antigos
+      continuam activos com chaves. Quem envia cifra também para eles e
+      gasta-lhes OPKs. É o gap de multi-dispositivo que já estava registado
+    - *Entrega não confirmada:* se nenhum device do destinatário tiver
+      chaves, a mensagem aparece como enviada mas não chega a ninguém (só há
+      um `console.warn`)
+    - *Grupos:* cifrar por device é o normal em 1:1. Para grupos, o plano é
+      Sender Keys (ver `esquema_de_grupos` no yaml), e para grupos muito
+      grandes existe o MLS (RFC 9420)
 
 ## Onde ficámos
 
-**Estado em 2026-09-25:** Fases 1 a 4 completas e testadas.
-`npm run test` (69 testes), `npx tsc --noEmit` e `npx expo lint` todos
-limpos no frontend. **Falta:** o commit da Fase 4 (as Fases 1-3 já estão
-commitadas).
+**Estado em 2026-09-25:** Fases 1 a 5 completas no código. `npm run test`
+(77 testes), `npx tsc --noEmit` e `npx expo lint` limpos no frontend;
+`ruff` e `mypy` limpos no backend. **Falta:**
+1. criar a BD `whattspoppin_test`, pôr `TEST_DATABASE_URL` no `.env` e
+   correr `pytest -q`
+2. teste manual com duas contas novas, confirmando no separador Network → WS
+   do browser que os frames só levam `ciphertext` e `header`
+3. commitar a Fase 5
 
-Próxima sessão: commitar a Fase 4 e avançar para a **Fase 5 - ligar ao
-resto da app** (payload do WebSocket passa a `{ciphertext, header}`,
-`IdentityContext` cifra em `sendMessage()` e decifra em
-`handlePayload()`, a primeira mensagem de uma sessão leva também a
-`X3dhInitialMessage`, e cifra-se uma vez por dispositivo destinatário).
+Depois disso a cifra ponta-a-ponta do MVP (1:1) está completa. O
+`README.md` e o `projeto-chat-selfhosted.yaml` ainda dizem "sem cifra" e
+têm de ser actualizados.

@@ -177,10 +177,14 @@ export async function initiateSession(params: InitiateSessionParams): Promise<X3
 export interface ReceiveInitialMessageParams {
   myDeviceId: string; // Bob
   initialMessage: X3dhInitialMessage; // o que Alice mandou
+  // false = só lê a OPK, sem a apagar - quem chama apaga-a (consumeOneTimePrekey)
+  // depois de confirmar que a primeira mensagem decifra. Evita perder a OPK
+  // por causa de uma mensagem adulterada.
+  consumeOneTimePrekey?: boolean;
 }
 
 // Wrapper de I/O do lado de Bob: carrega as chaves locais, consome a OPK
-// usada e chama o núcleo puro.
+// usada (salvo consumeOneTimePrekey: false) e chama o núcleo puro.
 export async function receiveInitialMessage(params: ReceiveInitialMessageParams): Promise<X3dhResponderResult> {
   const myKeys = await loadDeviceKeys(params.myDeviceId);
   if (!myKeys) throw new Error('Chaves locais não encontradas - gera as chaves primeiro');
@@ -196,8 +200,14 @@ export async function receiveInitialMessage(params: ReceiveInitialMessageParams)
   const signedPrekeyPrivate = base64ToBytes(myKeys.signedPrekeyPrivateKey);
 
   let oneTimePrekeyPrivate: Uint8Array | null = null;
-  if (params.initialMessage.oneTimePrekeyId !== null) {
-    oneTimePrekeyPrivate = await consumeOneTimePrekey(params.myDeviceId, params.initialMessage.oneTimePrekeyId);
+  const opkId = params.initialMessage.oneTimePrekeyId;
+  if (opkId !== null) {
+    if (params.consumeOneTimePrekey === false) {
+      const stored = myKeys.oneTimePrekeys.find((opk) => opk.keyId === opkId);
+      oneTimePrekeyPrivate = stored ? base64ToBytes(stored.privateKey) : null;
+    } else {
+      oneTimePrekeyPrivate = await consumeOneTimePrekey(params.myDeviceId, opkId);
+    }
     if (!oneTimePrekeyPrivate) {
       throw new Error('One-time prekey referida na mensagem inicial já não existe localmente');
     }

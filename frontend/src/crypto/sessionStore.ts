@@ -1,17 +1,29 @@
-// Persiste o estado do Double Ratchet por par de dispositivos (o meu
-// device, o device do outro) - não por conversa nem por utilizador, porque
-// cada par de dispositivos tem a sua própria sessão.
+// Persiste as sessões por par de dispositivos (o meu device, o device do
+// outro) - não por conversa nem por utilizador, porque cada par de
+// dispositivos tem a sua própria sessão.
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { type RatchetState } from './doubleRatchet';
+import { type X3dhInitialMessage } from './x3dh';
 import { bytesToBase64, base64ToBytes } from './encoding';
+
+export interface SessionRecord {
+  state: RatchetState;
+  // Lado de Alice: prelúdio X3DH que vai em todas as mensagens até ela
+  // decifrar a primeira resposta - se a primeira mensagem se perder, a
+  // seguinte ainda consegue abrir a sessão do lado de Bob.
+  pendingInitialMessage: X3dhInitialMessage | null;
+  // Lado de Bob: EK de Alice que criou esta sessão - distingue um prelúdio
+  // repetido (reutiliza a sessão) de uma sessão nova iniciada por Alice.
+  initiatorEphemeralKey: Uint8Array | null;
+}
 
 function storageKey(myDeviceId: string, remoteDeviceId: string): string {
   return `whattspoppin.session.${myDeviceId}.${remoteDeviceId}`;
 }
 
-interface StoredSession {
+interface StoredState {
   dhsPrivateKey: string;
   dhsPublicKey: string;
   dhr: string | null;
@@ -25,6 +37,19 @@ interface StoredSession {
   ad: string;
 }
 
+interface StoredInitialMessage {
+  identityKey: string;
+  ephemeralKey: string;
+  signedPrekeyId: number;
+  oneTimePrekeyId: number | null;
+}
+
+interface StoredSession {
+  state: StoredState;
+  pendingInitialMessage: StoredInitialMessage | null;
+  initiatorEphemeralKey: string | null;
+}
+
 function toBase64OrNull(bytes: Uint8Array | null): string | null {
   return bytes ? bytesToBase64(bytes) : null;
 }
@@ -33,7 +58,7 @@ function fromBase64OrNull(value: string | null): Uint8Array | null {
   return value ? base64ToBytes(value) : null;
 }
 
-function serialize(state: RatchetState): StoredSession {
+function serializeState(state: RatchetState): StoredState {
   return {
     dhsPrivateKey: bytesToBase64(state.dhs.privateKey),
     dhsPublicKey: bytesToBase64(state.dhs.publicKey),
@@ -49,7 +74,7 @@ function serialize(state: RatchetState): StoredSession {
   };
 }
 
-function deserialize(stored: StoredSession): RatchetState {
+function deserializeState(stored: StoredState): RatchetState {
   return {
     dhs: { privateKey: base64ToBytes(stored.dhsPrivateKey), publicKey: base64ToBytes(stored.dhsPublicKey) },
     dhr: fromBase64OrNull(stored.dhr),
@@ -64,15 +89,47 @@ function deserialize(stored: StoredSession): RatchetState {
   };
 }
 
+function serialize(record: SessionRecord): StoredSession {
+  const pending = record.pendingInitialMessage;
+  return {
+    state: serializeState(record.state),
+    pendingInitialMessage: pending
+      ? {
+          identityKey: bytesToBase64(pending.identityKey),
+          ephemeralKey: bytesToBase64(pending.ephemeralKey),
+          signedPrekeyId: pending.signedPrekeyId,
+          oneTimePrekeyId: pending.oneTimePrekeyId,
+        }
+      : null,
+    initiatorEphemeralKey: toBase64OrNull(record.initiatorEphemeralKey),
+  };
+}
+
+function deserialize(stored: StoredSession): SessionRecord {
+  const pending = stored.pendingInitialMessage;
+  return {
+    state: deserializeState(stored.state),
+    pendingInitialMessage: pending
+      ? {
+          identityKey: base64ToBytes(pending.identityKey),
+          ephemeralKey: base64ToBytes(pending.ephemeralKey),
+          signedPrekeyId: pending.signedPrekeyId,
+          oneTimePrekeyId: pending.oneTimePrekeyId,
+        }
+      : null,
+    initiatorEphemeralKey: fromBase64OrNull(stored.initiatorEphemeralKey),
+  };
+}
+
 export async function saveSession(
   myDeviceId: string,
   remoteDeviceId: string,
-  state: RatchetState,
+  record: SessionRecord,
 ): Promise<void> {
-  await AsyncStorage.setItem(storageKey(myDeviceId, remoteDeviceId), JSON.stringify(serialize(state)));
+  await AsyncStorage.setItem(storageKey(myDeviceId, remoteDeviceId), JSON.stringify(serialize(record)));
 }
 
-export async function loadSession(myDeviceId: string, remoteDeviceId: string): Promise<RatchetState | null> {
+export async function loadSession(myDeviceId: string, remoteDeviceId: string): Promise<SessionRecord | null> {
   const raw = await AsyncStorage.getItem(storageKey(myDeviceId, remoteDeviceId));
   if (!raw) return null;
   try {

@@ -3,15 +3,17 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 
 import { loginUser, registerUser, resumeSession, type UserSummary } from '../api/auth';
 import { generateAndPublishDeviceKeys } from '../crypto/keys';
+import { decryptIncoming, encryptForConversation, type IncomingEncryptedMessage } from '../crypto/messaging';
 import { useSocketConnection } from '../hooks/useSocketConnection';
 import { loadMessages, saveMessages } from '../storage/messageStore';
 import { formatTimeNow } from '../utils/time';
 import type { ChatMessage } from '../types/chat';
 
 const STORAGE_KEY = 'whattspoppin.device_token';
+const UNDECRYPTABLE_TEXT = '[mensagem não pôde ser decifrada]';
 
 type IncomingPayload =
-  | { type: 'message'; conversation_id: string; text: string }
+  | ({ type: 'message'; conversation_id: string; sender_device_id: string } & IncomingEncryptedMessage)
   | { type: 'user_registered'; user: UserSummary };
 
 type IdentityValue = {
@@ -128,30 +130,40 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     });
   }
 
-  const handlePayload = useCallback((raw: unknown) => {
-    const payload = raw as IncomingPayload;
+  const handlePayload = useCallback(
+    (raw: unknown) => {
+      const payload = raw as IncomingPayload;
 
-    if (payload.type === 'user_registered') {
-      setOtherUsers((prev) =>
-        prev.some((user) => user.user_id === payload.user.user_id) ? prev : [...prev, payload.user],
-      );
-      return;
-    }
+      if (payload.type === 'user_registered') {
+        setOtherUsers((prev) =>
+          prev.some((user) => user.user_id === payload.user.user_id) ? prev : [...prev, payload.user],
+        );
+        return;
+      }
 
-    if (payload.type === 'message') {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `${Date.now()}-${Math.random()}`,
-          conversationId: payload.conversation_id,
-          kind: 'text',
-          authorId: 'them',
-          text: payload.text,
-          timeLabel: formatTimeNow(),
-        },
-      ]);
-    }
-  }, []);
+      if (payload.type === 'message' && deviceId) {
+        decryptIncoming(deviceId, payload.sender_device_id, payload)
+          .catch((error: unknown) => {
+            console.warn('Falha ao decifrar mensagem:', error);
+            return UNDECRYPTABLE_TEXT;
+          })
+          .then((text) => {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `${Date.now()}-${Math.random()}`,
+                conversationId: payload.conversation_id,
+                kind: 'text',
+                authorId: 'them',
+                text,
+                timeLabel: formatTimeNow(),
+              },
+            ]);
+          });
+      }
+    },
+    [deviceId],
+  );
 
   const { send } = useSocketConnection(deviceId, handlePayload);
 
@@ -172,7 +184,16 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
         timeLabel: formatTimeNow(),
       },
     ]);
-    send({ conversation_id: conversationId, text });
+    if (!deviceId) return;
+    encryptForConversation(deviceId, conversationId, text)
+      .then((envelopes) => {
+        if (envelopes.length === 0) {
+          console.warn('Nenhum dispositivo do destinatário tem chaves publicadas - mensagem não enviada');
+          return;
+        }
+        send({ conversation_id: conversationId, envelopes });
+      })
+      .catch((error: unknown) => console.warn('Falha ao cifrar mensagem:', error));
   }
 
   return (
