@@ -18,19 +18,21 @@ export default function ConversationScreen() {
   const { id: otherUserId } = useLocalSearchParams<{ id: string }>();
   const identity = useIdentity();
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const { rememberConversation } = identity;
 
   useEffect(() => {
     if (!identity.userId) return;
     let cancelled = false;
 
     getOrCreateConversation(identity.userId, otherUserId).then((id) => {
+      rememberConversation(otherUserId, id);
       if (!cancelled) setConversationId(id);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [identity.userId, otherUserId]);
+  }, [identity.userId, otherUserId, rememberConversation]);
 
   const { markConversationRead } = identity;
   const appActive = useIsAppActive();
@@ -38,8 +40,6 @@ export default function ConversationScreen() {
     (message) => message.conversationId === conversationId,
   ).length;
 
-  // Com o ecrã aberto E a app à vista, o que chega conta como lido (recibo de
-  // leitura para quem enviou). Ao voltar à aba, marca o que chegou entretanto.
   useEffect(() => {
     if (conversationId && appActive) markConversationRead(conversationId);
   }, [conversationId, conversationMessageCount, appActive, markConversationRead]);

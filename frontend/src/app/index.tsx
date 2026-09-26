@@ -1,15 +1,28 @@
 import { Redirect, router } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo } from 'react';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ConversationList } from '../components/conversations/ConversationList';
 import { ConversationsHeader } from '../components/conversations/ConversationsHeader';
 import { LoadingState } from '../components/LoadingState';
 import { useIdentity } from '../context/IdentityContext';
+import { buildConversationSummaries, totalUnread } from '../messaging/conversationSummaries';
 import { colors } from '../theme/colors';
 
 export default function ConversationsScreen() {
   const identity = useIdentity();
+  const { otherUsers, messages, conversationUsers } = identity;
+  const summaries = useMemo(
+    () => buildConversationSummaries(otherUsers, messages, conversationUsers),
+    [otherUsers, messages, conversationUsers],
+  );
+  const unread = totalUnread(summaries);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    document.title = unread > 0 ? `(${unread}) WhattsPoppin` : 'WhattsPoppin';
+  }, [unread]);
 
   if (identity.loading) return <LoadingState />;
   if (!identity.authenticated) return <Redirect href="/login" />;
@@ -31,28 +44,13 @@ export default function ConversationsScreen() {
       ) : (
         <View style={styles.list}>
           <ConversationList
-            conversations={identity.otherUsers.map((user) => ({
-              id: user.user_id,
-              title: user.display_name,
-              initials: initialsFor(user.display_name),
-              lastMessagePreview: 'Toca para conversar',
-              timeLabel: '',
-            }))}
+            conversations={summaries}
             onSelectConversation={(id) => router.push(`/conversation/${id}`)}
           />
         </View>
       )}
     </SafeAreaView>
   );
-}
-
-function initialsFor(name: string): string {
-  return name
-    .split(' ')
-    .map((part) => part[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
 }
 
 const styles = StyleSheet.create({

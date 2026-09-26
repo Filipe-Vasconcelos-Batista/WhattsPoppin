@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, ValidationError
 from app.db.sync import run_sync
 from app.services import outbox
 from app.services.connections import connection_manager
-from app.services.messaging import find_recipient_device_ids
+from app.services.messaging import find_recipient_device_ids, user_id_of_device
 
 router = APIRouter()
 
@@ -96,6 +96,7 @@ async def _handle_message(sender_device_id: uuid.UUID, message: OutgoingMessage)
     allowed = set(
         await run_sync(find_recipient_device_ids, message.conversation_id, sender_device_id)
     )
+    sender_user_id = await run_sync(user_id_of_device, sender_device_id)
     for envelope in message.envelopes:
         if envelope.device_id not in allowed:
             continue
@@ -107,6 +108,7 @@ async def _handle_message(sender_device_id: uuid.UUID, message: OutgoingMessage)
                 "client_message_id": str(message.client_message_id),
                 # Vem da ligação, nunca do que o cliente diz
                 "sender_device_id": str(sender_device_id),
+                "sender_user_id": str(sender_user_id),
                 "header": envelope.header.model_dump(),
                 "ciphertext": envelope.ciphertext,
                 "x3dh": envelope.x3dh.model_dump() if envelope.x3dh else None,

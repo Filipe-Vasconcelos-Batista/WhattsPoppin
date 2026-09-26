@@ -36,6 +36,7 @@ type IncomingPayload =
       conversation_id: string;
       client_message_id: string;
       sender_device_id: string;
+      sender_user_id?: string;
     } & IncomingEncryptedMessage)
   | { type: 'sent'; client_message_id: string }
   | {
@@ -55,6 +56,8 @@ type IdentityValue = {
   displayName: string | null;
   otherUsers: UserSummary[];
   messages: ChatMessage[];
+  conversationUsers: Record<string, string>;
+  rememberConversation: (otherUserId: string, conversationId: string) => void;
   sendMessage: (conversationId: string, text: string) => void;
   markConversationRead: (conversationId: string) => void;
   login: (username: string, password: string) => Promise<void>;
@@ -69,6 +72,8 @@ const IdentityContext = createContext<IdentityValue>({
   displayName: null,
   otherUsers: [],
   messages: [],
+  conversationUsers: {},
+  rememberConversation: () => {},
   sendMessage: () => {},
   markConversationRead: () => {},
   login: async () => {},
@@ -83,6 +88,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [otherUsers, setOtherUsers] = useState<UserSummary[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [conversationUsers, setConversationUsers] = useState<Record<string, string>>({});
   // Mensagens recebidas já tratadas, por `${sender_device_id}:${client_message_id}`
   // - o servidor reenvia o que não recebeu ack e quem envia pode reenviar da
   // outbox; decifrar a mesma mensagem duas vezes falharia (a chave já foi usada).
@@ -149,6 +155,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     setDeviceId(newDeviceId);
     setDisplayName(newDisplayName);
     setOtherUsers(newOtherUsers);
+    setConversationUsers(conversationUsersFrom(newOtherUsers));
     setAuthenticated(true);
     const storedMessages = await loadMessages(newUserId);
     seenMessageIdsRef.current = new Set(storedMessages.map((message) => message.id));
@@ -195,6 +202,12 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  const rememberConversation = useCallback((otherUserId: string, conversationId: string) => {
+    setConversationUsers((prev) =>
+      prev[conversationId] === otherUserId ? prev : { ...prev, [conversationId]: otherUserId },
+    );
+  }, []);
+
   const handlePayload = useCallback(
     (raw: unknown) => {
       const payload = raw as IncomingPayload;
@@ -231,6 +244,9 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
         // Marcado antes de decifrar: uma segunda cópia que chegue entretanto
         // não é decifrada outra vez.
         seenMessageIdsRef.current.add(key);
+        if (payload.sender_user_id) {
+          rememberConversation(payload.sender_user_id, payload.conversation_id);
+        }
 
         decryptIncoming(deviceId, payload.sender_device_id, payload)
           .catch((error: unknown) => {
@@ -247,6 +263,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
                 authorId: 'them',
                 text,
                 timeLabel: formatTimeNow(),
+                sentAt: Date.now(),
                 senderDeviceId: payload.sender_device_id,
                 clientMessageId: payload.client_message_id,
               },
@@ -256,7 +273,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
           });
       }
     },
-    [deviceId, outgoingQueue, updateMyStatus],
+    [deviceId, outgoingQueue, updateMyStatus, rememberConversation],
   );
 
   const { send } = useSocketConnection(deviceId, handlePayload, () => {
@@ -287,6 +304,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
         authorId: 'me',
         text,
         timeLabel: formatTimeNow(),
+        sentAt: Date.now(),
         status: 'pending',
       },
     ]);
@@ -296,48 +314,53 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
       ?.enqueue({ clientMessageId, conversationId, text })
       .catch((error: unknown) => console.warn('Falha ao guardar mensagem na outbox:', error));
   }
-
-  // Manda um recibo de leitura por cada device que enviou mensagens ainda não
-  // marcadas como lidas nesta conversa. Só marca como enviado se o socket
-  // estava aberto - senão tenta de novo na próxima vez.
   const markConversationRead = useCallback((conversationId: string) => {
     const bySender = new Map<string, string[]>();
-    const readIds = new Set<string>();
+    const unseenIds = new Set<string>();
+    const receiptIds = new Set<string>();
 
     for (const message of messagesRef.current) {
       if (
         message.kind !== 'text' ||
         message.conversationId !== conversationId ||
-        message.authorId === 'me' ||
-        !message.senderDeviceId ||
-        !message.clientMessageId ||
-        message.readReceiptSent
+        message.authorId === 'me'
       ) {
+        continue;
+      }
+      if (!message.seen) unseenIds.add(message.id);
+      if (!message.senderDeviceId || !message.clientMessageId || message.readReceiptSent) {
         continue;
       }
       const ids = bySender.get(message.senderDeviceId) ?? [];
       ids.push(message.clientMessageId);
       bySender.set(message.senderDeviceId, ids);
-      readIds.add(message.id);
+      receiptIds.add(message.id);
     }
-    if (readIds.size === 0) return;
+    if (unseenIds.size === 0 && receiptIds.size === 0) return;
 
-    const sent = sendRef.current({
-      type: 'read',
-      conversation_id: conversationId,
-      receipts: [...bySender].map(([device_id, client_message_ids]) => ({
-        device_id,
-        client_message_ids,
-      })),
-    });
-    if (!sent) return;
+    const receiptSent =
+      receiptIds.size > 0 &&
+      sendRef.current({
+        type: 'read',
+        conversation_id: conversationId,
+        receipts: [...bySender].map(([device_id, client_message_ids]) => ({
+          device_id,
+          client_message_ids,
+        })),
+      });
 
     setMessages((prev) =>
-      prev.map((message) =>
-        message.kind === 'text' && readIds.has(message.id)
-          ? { ...message, readReceiptSent: true }
-          : message,
-      ),
+      prev.map((message) => {
+        if (message.kind !== 'text') return message;
+        const seen = unseenIds.has(message.id);
+        const receipt = receiptSent && receiptIds.has(message.id);
+        if (!seen && !receipt) return message;
+        return {
+          ...message,
+          ...(seen && { seen: true }),
+          ...(receipt && { readReceiptSent: true }),
+        };
+      }),
     );
   }, []);
 
@@ -351,6 +374,8 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
         displayName,
         otherUsers,
         messages,
+        conversationUsers,
+        rememberConversation,
         sendMessage,
         markConversationRead,
         login,
@@ -360,6 +385,14 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
       {children}
     </IdentityContext.Provider>
   );
+}
+
+function conversationUsersFrom(users: UserSummary[]): Record<string, string> {
+  const conversationUsers: Record<string, string> = {};
+  for (const user of users) {
+    if (user.conversation_id) conversationUsers[user.conversation_id] = user.user_id;
+  }
+  return conversationUsers;
 }
 
 export function useIdentity(): IdentityValue {

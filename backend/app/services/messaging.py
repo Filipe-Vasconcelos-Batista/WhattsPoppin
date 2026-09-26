@@ -3,6 +3,11 @@ import uuid
 from app.models import ConversationParticipant, Device
 
 
+def user_id_of_device(device_id: uuid.UUID) -> uuid.UUID:
+    user_id: uuid.UUID = Device.get_by_id(device_id).user.id
+    return user_id
+
+
 def find_recipient_device_ids(
     conversation_id: uuid.UUID,
     sender_device_id: uuid.UUID,

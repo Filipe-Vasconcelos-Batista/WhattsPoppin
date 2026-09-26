@@ -53,6 +53,15 @@ estado_de_implementacao:
       "sent" quando o servidor guarda, "delivered" gerado pelo servidor no ack
       do destinatário, "read" quando o destinatário abre a conversa. Recibos
       passam pela mesma fila (pending_messages); só levam ids, nunca conteúdo
+    - lista de conversas com última mensagem, hora (hoje HH:MM, "Ontem", dia
+      da semana, data) e contagem de não lidas; a conversa mais recente sobe
+      para o topo. A lista é por utilizador e as mensagens por conversa - a
+      ponte (conversation_id → user_id) vem de other_users[].conversation_id
+      no login/sessão e do sender_user_id que o servidor junta a cada
+      mensagem (tirado da ligação, nunca do cliente). "Não lida" é estado
+      local (seen), separado do recibo de leitura - abrir a conversa com o
+      socket em baixo limpa o contador na mesma. Na web, o título do
+      separador mostra o total por ler
   simplificacoes_temporarias:
     - cifra só em 1:1 e com arestas conhecidas - inícios de sessão
       simultâneos podem perder as mensagens que se cruzam (sem arquivo de
