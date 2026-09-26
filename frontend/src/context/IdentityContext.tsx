@@ -12,6 +12,7 @@ import {
 } from 'react';
 
 import { loginUser, registerUser, resumeSession, type UserSummary } from '../api/auth';
+import { updateDisplayName as updateDisplayNameRequest } from '../api/users';
 import { generateAndPublishDeviceKeys } from '../crypto/keys';
 import {
   decryptIncoming,
@@ -22,6 +23,7 @@ import { useSocketConnection } from '../hooks/useSocketConnection';
 import { newClientMessageId } from '../messaging/clientMessageId';
 import { createOutgoingQueue } from '../messaging/outgoingQueue';
 import { advanceStatus } from '../messaging/status';
+import { TYPING_EXPIRE_MS } from '../messaging/typingSignal';
 import { loadMessages, saveMessages } from '../storage/messageStore';
 import { formatTimeNow } from '../utils/time';
 import type { ChatMessage, MessageStatus } from '../types/chat';
@@ -36,6 +38,7 @@ type IncomingPayload =
       conversation_id: string;
       client_message_id: string;
       sender_device_id: string;
+      sender_user_id?: string;
     } & IncomingEncryptedMessage)
   | { type: 'sent'; client_message_id: string }
   | {
@@ -45,7 +48,9 @@ type IncomingPayload =
       conversation_id: string;
       client_message_ids: string[];
     }
-  | { type: 'user_registered'; user: UserSummary };
+  | { type: 'typing'; conversation_id: string; sender_user_id: string; typing: boolean }
+  | { type: 'user_registered'; user: UserSummary }
+  | { type: 'user_updated'; user: UserSummary };
 
 type IdentityValue = {
   loading: boolean;
@@ -55,8 +60,13 @@ type IdentityValue = {
   displayName: string | null;
   otherUsers: UserSummary[];
   messages: ChatMessage[];
+  conversationUsers: Record<string, string>;
+  rememberConversation: (otherUserId: string, conversationId: string) => void;
+  typingConversations: ReadonlySet<string>;
+  sendTyping: (conversationId: string, typing: boolean) => void;
   sendMessage: (conversationId: string, text: string) => void;
   markConversationRead: (conversationId: string) => void;
+  updateDisplayName: (displayName: string) => Promise<void>;
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string) => Promise<void>;
 };
@@ -69,8 +79,13 @@ const IdentityContext = createContext<IdentityValue>({
   displayName: null,
   otherUsers: [],
   messages: [],
+  conversationUsers: {},
+  rememberConversation: () => {},
+  typingConversations: new Set(),
+  sendTyping: () => {},
   sendMessage: () => {},
   markConversationRead: () => {},
+  updateDisplayName: async () => {},
   login: async () => {},
   register: async () => {},
 });
@@ -78,11 +93,17 @@ const IdentityContext = createContext<IdentityValue>({
 export function IdentityProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
+  const [token, setToken] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [otherUsers, setOtherUsers] = useState<UserSummary[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [conversationUsers, setConversationUsers] = useState<Record<string, string>>({});
+  const [typingConversations, setTypingConversations] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const typingTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   // Mensagens recebidas já tratadas, por `${sender_device_id}:${client_message_id}`
   // - o servidor reenvia o que não recebeu ack e quem envia pode reenviar da
   // outbox; decifrar a mesma mensagem duas vezes falharia (a chave já foi usada).
@@ -145,10 +166,12 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     newDisplayName: string,
     newOtherUsers: UserSummary[],
   ) {
+    setToken(token);
     setUserId(newUserId);
     setDeviceId(newDeviceId);
     setDisplayName(newDisplayName);
     setOtherUsers(newOtherUsers);
+    setConversationUsers(conversationUsersFrom(newOtherUsers));
     setAuthenticated(true);
     const storedMessages = await loadMessages(newUserId);
     seenMessageIdsRef.current = new Set(storedMessages.map((message) => message.id));
@@ -168,6 +191,11 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     generateAndPublishDeviceKeys(session.device_id, session.token).catch((error) => {
       console.warn('Falha ao gerar/publicar chaves E2E do dispositivo:', error);
     });
+  }
+
+  async function updateDisplayName(newDisplayName: string) {
+    if (!token) throw new Error('Sem sessão');
+    setDisplayName(await updateDisplayNameRequest(token, newDisplayName));
   }
 
   async function register(username: string, password: string) {
@@ -195,15 +223,68 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  const rememberConversation = useCallback((otherUserId: string, conversationId: string) => {
+    setConversationUsers((prev) =>
+      prev[conversationId] === otherUserId ? prev : { ...prev, [conversationId]: otherUserId },
+    );
+  }, []);
+
+  const setConversationTyping = useCallback((conversationId: string, typing: boolean) => {
+    const timers = typingTimersRef.current;
+    const timer = timers.get(conversationId);
+    if (timer) clearTimeout(timer);
+    timers.delete(conversationId);
+
+    if (typing) {
+      timers.set(
+        conversationId,
+        setTimeout(() => setConversationTyping(conversationId, false), TYPING_EXPIRE_MS),
+      );
+    }
+    setTypingConversations((prev) => {
+      if (prev.has(conversationId) === typing) return prev;
+      const next = new Set(prev);
+      if (typing) next.add(conversationId);
+      else next.delete(conversationId);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const timers = typingTimersRef.current;
+    return () => timers.forEach((timer) => clearTimeout(timer));
+  }, []);
+
   const handlePayload = useCallback(
     (raw: unknown) => {
       const payload = raw as IncomingPayload;
+
+      if (payload.type === 'typing') {
+        rememberConversation(payload.sender_user_id, payload.conversation_id);
+        setConversationTyping(payload.conversation_id, payload.typing);
+        return;
+      }
 
       if (payload.type === 'user_registered') {
         setOtherUsers((prev) =>
           prev.some((user) => user.user_id === payload.user.user_id)
             ? prev
             : [...prev, payload.user],
+        );
+        return;
+      }
+
+      if (payload.type === 'user_updated') {
+        if (payload.user.user_id === userId) {
+          setDisplayName(payload.user.display_name);
+          return;
+        }
+        setOtherUsers((prev) =>
+          prev.map((user) =>
+            user.user_id === payload.user.user_id
+              ? { ...user, display_name: payload.user.display_name }
+              : user,
+          ),
         );
         return;
       }
@@ -228,9 +309,11 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
           ack();
           return;
         }
-        // Marcado antes de decifrar: uma segunda cópia que chegue entretanto
-        // não é decifrada outra vez.
         seenMessageIdsRef.current.add(key);
+        setConversationTyping(payload.conversation_id, false);
+        if (payload.sender_user_id) {
+          rememberConversation(payload.sender_user_id, payload.conversation_id);
+        }
 
         decryptIncoming(deviceId, payload.sender_device_id, payload)
           .catch((error: unknown) => {
@@ -247,6 +330,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
                 authorId: 'them',
                 text,
                 timeLabel: formatTimeNow(),
+                sentAt: Date.now(),
                 senderDeviceId: payload.sender_device_id,
                 clientMessageId: payload.client_message_id,
               },
@@ -256,7 +340,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
           });
       }
     },
-    [deviceId, outgoingQueue, updateMyStatus],
+    [userId, deviceId, outgoingQueue, updateMyStatus, rememberConversation, setConversationTyping],
   );
 
   const { send } = useSocketConnection(deviceId, handlePayload, () => {
@@ -276,6 +360,10 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     saveMessages(userId, messages);
   }, [userId, messages]);
 
+  const sendTyping = useCallback((conversationId: string, typing: boolean) => {
+    sendRef.current({ type: 'typing', conversation_id: conversationId, typing });
+  }, []);
+
   function sendMessage(conversationId: string, text: string) {
     const clientMessageId = newClientMessageId();
     setMessages((prev) => [
@@ -287,6 +375,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
         authorId: 'me',
         text,
         timeLabel: formatTimeNow(),
+        sentAt: Date.now(),
         status: 'pending',
       },
     ]);
@@ -296,48 +385,53 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
       ?.enqueue({ clientMessageId, conversationId, text })
       .catch((error: unknown) => console.warn('Falha ao guardar mensagem na outbox:', error));
   }
-
-  // Manda um recibo de leitura por cada device que enviou mensagens ainda não
-  // marcadas como lidas nesta conversa. Só marca como enviado se o socket
-  // estava aberto - senão tenta de novo na próxima vez.
   const markConversationRead = useCallback((conversationId: string) => {
     const bySender = new Map<string, string[]>();
-    const readIds = new Set<string>();
+    const unseenIds = new Set<string>();
+    const receiptIds = new Set<string>();
 
     for (const message of messagesRef.current) {
       if (
         message.kind !== 'text' ||
         message.conversationId !== conversationId ||
-        message.authorId === 'me' ||
-        !message.senderDeviceId ||
-        !message.clientMessageId ||
-        message.readReceiptSent
+        message.authorId === 'me'
       ) {
+        continue;
+      }
+      if (!message.seen) unseenIds.add(message.id);
+      if (!message.senderDeviceId || !message.clientMessageId || message.readReceiptSent) {
         continue;
       }
       const ids = bySender.get(message.senderDeviceId) ?? [];
       ids.push(message.clientMessageId);
       bySender.set(message.senderDeviceId, ids);
-      readIds.add(message.id);
+      receiptIds.add(message.id);
     }
-    if (readIds.size === 0) return;
+    if (unseenIds.size === 0 && receiptIds.size === 0) return;
 
-    const sent = sendRef.current({
-      type: 'read',
-      conversation_id: conversationId,
-      receipts: [...bySender].map(([device_id, client_message_ids]) => ({
-        device_id,
-        client_message_ids,
-      })),
-    });
-    if (!sent) return;
+    const receiptSent =
+      receiptIds.size > 0 &&
+      sendRef.current({
+        type: 'read',
+        conversation_id: conversationId,
+        receipts: [...bySender].map(([device_id, client_message_ids]) => ({
+          device_id,
+          client_message_ids,
+        })),
+      });
 
     setMessages((prev) =>
-      prev.map((message) =>
-        message.kind === 'text' && readIds.has(message.id)
-          ? { ...message, readReceiptSent: true }
-          : message,
-      ),
+      prev.map((message) => {
+        if (message.kind !== 'text') return message;
+        const seen = unseenIds.has(message.id);
+        const receipt = receiptSent && receiptIds.has(message.id);
+        if (!seen && !receipt) return message;
+        return {
+          ...message,
+          ...(seen && { seen: true }),
+          ...(receipt && { readReceiptSent: true }),
+        };
+      }),
     );
   }, []);
 
@@ -351,8 +445,13 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
         displayName,
         otherUsers,
         messages,
+        conversationUsers,
+        rememberConversation,
+        typingConversations,
+        sendTyping,
         sendMessage,
         markConversationRead,
+        updateDisplayName,
         login,
         register,
       }}
@@ -360,6 +459,14 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
       {children}
     </IdentityContext.Provider>
   );
+}
+
+function conversationUsersFrom(users: UserSummary[]): Record<string, string> {
+  const conversationUsers: Record<string, string> = {};
+  for (const user of users) {
+    if (user.conversation_id) conversationUsers[user.conversation_id] = user.user_id;
+  }
+  return conversationUsers;
 }
 
 export function useIdentity(): IdentityValue {

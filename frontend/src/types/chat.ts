@@ -14,6 +14,7 @@ export type ConversationSummary = {
   lastMessagePreview: string;
   timeLabel: string;
   unreadCount?: number;
+  isTyping?: boolean;
   isGroup?: boolean;
 };
 
@@ -28,11 +29,13 @@ export type ChatMessage =
       authorId: 'me' | string;
       text: string;
       timeLabel: string;
+      sentAt?: number;
       status?: MessageStatus;
       /** Recebidas: device que enviou e id que ele deu à mensagem (para os recibos). */
       senderDeviceId?: string;
       clientMessageId?: string;
       readReceiptSent?: boolean;
+      seen?: boolean;
     }
   | {
       id: string;
@@ -40,4 +43,5 @@ export type ChatMessage =
       kind: 'sticker';
       authorId: 'me' | string;
       timeLabel: string;
+      sentAt?: number;
     };

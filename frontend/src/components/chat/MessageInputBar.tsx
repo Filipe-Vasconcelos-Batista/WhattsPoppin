@@ -1,22 +1,47 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Platform, StyleSheet, TextInput, View, type TextInputKeyPressEvent } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 import { GradientButton } from '../GradientButton';
+import { createTypingSignal, type TypingSignal } from '../../messaging/typingSignal';
 import { colors } from '../../theme/colors';
 
 type MessageInputBarProps = {
   onSend?: (text: string) => void;
+  onTypingChange?: (typing: boolean) => void;
   onPickImage?: () => void;
   onPickEmoji?: () => void;
 };
 
-export function MessageInputBar({ onSend, onPickImage, onPickEmoji }: MessageInputBarProps) {
+export function MessageInputBar({
+  onSend,
+  onTypingChange,
+  onPickImage,
+  onPickEmoji,
+}: MessageInputBarProps) {
   const [text, setText] = useState('');
+  const onTypingChangeRef = useRef(onTypingChange);
+  const typingSignalRef = useRef<TypingSignal | null>(null);
+
+  useEffect(() => {
+    onTypingChangeRef.current = onTypingChange;
+  });
+
+  useEffect(() => {
+    const signal = createTypingSignal((typing) => onTypingChangeRef.current?.(typing));
+    typingSignalRef.current = signal;
+    return () => signal.stop();
+  }, []);
+
+  function handleChangeText(value: string) {
+    setText(value);
+    typingSignalRef.current?.textChanged(value);
+  }
 
   function handleSend() {
     const trimmed = text.trim();
     if (!trimmed) return;
+    typingSignalRef.current?.stop();
     onSend?.(trimmed);
     setText('');
   }
@@ -45,7 +70,7 @@ export function MessageInputBar({ onSend, onPickImage, onPickEmoji }: MessageInp
 
       <TextInput
         value={text}
-        onChangeText={setText}
+        onChangeText={handleChangeText}
         onKeyPress={handleKeyPress}
         placeholder="Escreve uma mensagem"
         placeholderTextColor={colors.textSecondary}

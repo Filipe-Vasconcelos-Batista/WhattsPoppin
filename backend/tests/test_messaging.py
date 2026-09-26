@@ -54,6 +54,7 @@ def test_websocket_routes_each_envelope_only_to_its_device(ws_client: TestClient
 
     assert to_bob["type"] == "message"
     assert to_bob["sender_device_id"] == alice["device_id"]
+    assert to_bob["sender_user_id"] == alice["user_id"]
     assert to_bob["conversation_id"] == conversation_id
     assert to_bob["header"]["n"] == 0
     assert to_bob["ciphertext"] == b64(b"ciphertext-0")

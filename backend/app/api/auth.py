@@ -28,6 +28,7 @@ class SessionRequest(BaseModel):
 class UserSummaryResponse(BaseModel):
     user_id: uuid.UUID
     display_name: str
+    conversation_id: uuid.UUID | None = None
 
 
 class AuthResponse(BaseModel):
@@ -58,7 +59,11 @@ async def _finish(identity: Identity) -> AuthResponse:
         device_id=identity.device_id,
         display_name=identity.display_name,
         other_users=[
-            UserSummaryResponse(user_id=user.user_id, display_name=user.display_name)
+            UserSummaryResponse(
+                user_id=user.user_id,
+                display_name=user.display_name,
+                conversation_id=user.conversation_id,
+            )
             for user in other_users
         ],
     )

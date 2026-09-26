@@ -3,6 +3,7 @@ import { API_URL } from './config';
 export type UserSummary = {
   user_id: string;
   display_name: string;
+  conversation_id?: string | null;
 };
 
 export type AuthResponse = {

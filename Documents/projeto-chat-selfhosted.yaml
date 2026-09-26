@@ -53,6 +53,24 @@ estado_de_implementacao:
       "sent" quando o servidor guarda, "delivered" gerado pelo servidor no ack
       do destinatário, "read" quando o destinatário abre a conversa. Recibos
       passam pela mesma fila (pending_messages); só levam ids, nunca conteúdo
+    - lista de conversas com última mensagem, hora (hoje HH:MM, "Ontem", dia
+      da semana, data) e contagem de não lidas; a conversa mais recente sobe
+      para o topo. A lista é por utilizador e as mensagens por conversa - a
+      ponte (conversation_id → user_id) vem de other_users[].conversation_id
+      no login/sessão e do sender_user_id que o servidor junta a cada
+      mensagem (tirado da ligação, nunca do cliente). "Não lida" é estado
+      local (seen), separado do recibo de leitura - abrir a conversa com o
+      socket em baixo limpa o contador na mesma. Na web, o título do
+      separador mostra o total por ler
+    - indicador "a escrever" - evento typing no WebSocket, reencaminhado só
+      aos devices ligados da conversa (nunca vai para a fila nem para a BD);
+      aparece como bolha de três pontos no fundo da conversa e como
+      "a escrever…" na lista. Detalhe em mensagens_entrega_e_estado.a_escrever
+    - nome de exibição editável no ecrã "O meu perfil" (botão de definições
+      da lista). Começa igual ao username do registo; PATCH
+      /users/me/display_name com o token da sessão (trim, 1-80 caracteres);
+      o servidor avisa os outros devices ligados com o evento user_updated,
+      e a lista deles atualiza sem refresh. O username (para entrar) não muda
   simplificacoes_temporarias:
     - cifra só em 1:1 e com arestas conhecidas - inícios de sessão
       simultâneos podem perder as mensagens que se cruzam (sem arquivo de
@@ -60,13 +78,11 @@ estado_de_implementacao:
     - sem federação - identificador é só o username local, sem
       user@servidor, .well-known, handshake nem federated_servers
     - sem alcunha nem deteção de ambiguidade - mostra-se sempre o nome de
-      exibição (= username escolhido no registo)
+      exibição
     - registo aberto, sem código de convite nem aprovação de admin
     - ecrã de login sem campo "Servidor" (assume-se sempre este servidor)
     - recibos de leitura sempre ligados (sem opção de privacidade) e sem
       estado "falhou" - uma mensagem que não se consegue cifrar fica pending
-    - indicador "a escrever" existe como componente mas não está ligado a
-      nenhum evento real
     - mensagens no cliente ficam em localStorage/AsyncStorage, não
       IndexedDB - decisão consciente de não otimizar prematuramente
       (quota ~5-10MB, muito acima do que se está a usar agora)
@@ -75,7 +91,7 @@ estado_de_implementacao:
       privadas estão no localStorage sem cifra. Requisito - poder usar a
       web em qualquer máquina, incluindo partilhadas. Desenho (fora do
       MVP) em cifra.protecao_dos_dados_no_dispositivo
-    - nome de exibição editável, alcunhas, deteção de ambiguidade
+    - alcunhas, deteção de ambiguidade
     - backup e restauro de chaves (praticamente tudo, depende da cifra)
     - multi-dispositivo - hoje cada login novo cria um Device sem ligação
       nenhuma aos anteriores, sem partilha de histórico entre eles
@@ -308,6 +324,18 @@ mensagens_entrega_e_estado:
     persistencia: nenhuma - nunca gravado em BD
     retry: nenhum - evento efémero, só WebSocket
     cliente: debounce (~3s desde a última tecla), envia stop explícito ao enviar mensagem
+    implementado:
+      envio: >
+        typing=true na primeira tecla, repetido no máximo a cada 3s enquanto
+        escreve; typing=false após 3s sem teclas, ao enviar, ao apagar o
+        texto todo e ao sair do ecrã (messaging/typingSignal.ts)
+      rececao: >
+        expira sozinho ao fim de 5s sem novo evento (cobre um false perdido
+        ou o outro lado a cair) e é limpo quando chega uma mensagem dessa
+        conversa
+      servidor: >
+        só reencaminha para os devices da conversa que estão ligados agora,
+        com sender_user_id tirado da ligação
 
 notificacoes_push:
   mobile:

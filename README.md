@@ -83,6 +83,16 @@ aparecem um ao outro na lista de conversas.
   envia cifra um envelope por cada dispositivo do destinatário; o
   servidor entrega a cada um só o seu e nunca vê o texto.
 - A lista atualiza-se sozinha quando alguém novo se regista, sem refresh.
+- **Lista de conversas viva:** cada conversa mostra a última mensagem, a
+  hora ("14:32", "Ontem", "Ter") e quantas estão por ler; a que recebeu ou
+  enviou a mensagem mais recente sobe para o topo. Na web, o separador do
+  browser mostra o total por ler, por exemplo "(3) WhattsPoppin".
+- **"A escrever"**: enquanto o outro escreve, aparecem três pontos no fundo
+  da conversa e "a escrever…" na lista. É um evento efémero, que o servidor
+  nunca guarda.
+- **Nome de exibição editável** em "O meu perfil" (o botão de definições na
+  lista). Os outros veem o nome novo logo, sem refresh; o nome de
+  utilizador com que entras não muda.
 - O WebSocket reconecta-se sozinho se o backend reiniciar.
 - **Fila offline:** mensagens para quem não está ligado ficam guardadas no
   servidor (só o envelope cifrado) e são entregues quando o dispositivo se
@@ -123,9 +133,6 @@ aparecem um ao outro na lista de conversas.
   para resolver isto (fora do MVP) está em
   `cifra.protecao_dos_dados_no_dispositivo` no
   [`Documents/projeto-chat-selfhosted.yaml`](./Documents/projeto-chat-selfhosted.yaml).
-- **Sem indicação fora da conversa.** Uma mensagem só aparece se tiveres o
-  ecrã dessa conversa aberto — a lista não mostra pré-visualização real nem
-  contagem de não lidas.
 - **Recibos de leitura sempre ligados.** Ainda não há a opção de os
   desligar (como no WhatsApp), nem estado "falhou" visível — uma mensagem
   que não se consegue cifrar (ex.: destinatário sem chaves) fica com o

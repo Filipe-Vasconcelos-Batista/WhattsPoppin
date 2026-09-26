@@ -19,7 +19,10 @@ export function ConversationListItem({ conversation, onPress }: ConversationList
         <Text style={styles.title} numberOfLines={1}>
           {conversation.title}
         </Text>
-        <Text style={styles.preview} numberOfLines={1}>
+        <Text
+          style={[styles.preview, conversation.isTyping && styles.previewTyping]}
+          numberOfLines={1}
+        >
           {conversation.lastMessagePreview}
         </Text>
       </View>
@@ -53,6 +56,9 @@ const styles = StyleSheet.create({
   preview: {
     color: colors.textSecondary,
     fontSize: 14,
+  },
+  previewTyping: {
+    color: colors.accentCyan,
   },
   right: {
     alignItems: 'flex-end',

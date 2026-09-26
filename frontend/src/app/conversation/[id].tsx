@@ -18,19 +18,21 @@ export default function ConversationScreen() {
   const { id: otherUserId } = useLocalSearchParams<{ id: string }>();
   const identity = useIdentity();
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const { rememberConversation } = identity;
 
   useEffect(() => {
     if (!identity.userId) return;
     let cancelled = false;
 
     getOrCreateConversation(identity.userId, otherUserId).then((id) => {
+      rememberConversation(otherUserId, id);
       if (!cancelled) setConversationId(id);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [identity.userId, otherUserId]);
+  }, [identity.userId, otherUserId, rememberConversation]);
 
   const { markConversationRead } = identity;
   const appActive = useIsAppActive();
@@ -38,8 +40,6 @@ export default function ConversationScreen() {
     (message) => message.conversationId === conversationId,
   ).length;
 
-  // Com o ecrã aberto E a app à vista, o que chega conta como lido (recibo de
-  // leitura para quem enviou). Ao voltar à aba, marca o que chegou entretanto.
   useEffect(() => {
     if (conversationId && appActive) markConversationRead(conversationId);
   }, [conversationId, conversationMessageCount, appActive, markConversationRead]);
@@ -75,12 +75,18 @@ export default function ConversationScreen() {
         keyboardVerticalOffset={12}
       >
         <View style={styles.messages}>
-          <MessageList messages={messages} />
+          <MessageList
+            messages={messages}
+            typing={identity.typingConversations.has(conversationId)}
+          />
         </View>
 
         <KeyboardStickyView>
           <View style={styles.inputBar}>
-            <MessageInputBar onSend={(text) => identity.sendMessage(conversationId, text)} />
+            <MessageInputBar
+              onSend={(text) => identity.sendMessage(conversationId, text)}
+              onTypingChange={(typing) => identity.sendTyping(conversationId, typing)}
+            />
           </View>
         </KeyboardStickyView>
       </KeyboardAvoidingView>
