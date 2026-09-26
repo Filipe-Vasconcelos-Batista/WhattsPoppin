@@ -12,6 +12,7 @@ import {
 } from 'react';
 
 import { loginUser, registerUser, resumeSession, type UserSummary } from '../api/auth';
+import { updateDisplayName as updateDisplayNameRequest } from '../api/users';
 import { generateAndPublishDeviceKeys } from '../crypto/keys';
 import {
   decryptIncoming,
@@ -48,7 +49,8 @@ type IncomingPayload =
       client_message_ids: string[];
     }
   | { type: 'typing'; conversation_id: string; sender_user_id: string; typing: boolean }
-  | { type: 'user_registered'; user: UserSummary };
+  | { type: 'user_registered'; user: UserSummary }
+  | { type: 'user_updated'; user: UserSummary };
 
 type IdentityValue = {
   loading: boolean;
@@ -64,6 +66,7 @@ type IdentityValue = {
   sendTyping: (conversationId: string, typing: boolean) => void;
   sendMessage: (conversationId: string, text: string) => void;
   markConversationRead: (conversationId: string) => void;
+  updateDisplayName: (displayName: string) => Promise<void>;
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string) => Promise<void>;
 };
@@ -82,6 +85,7 @@ const IdentityContext = createContext<IdentityValue>({
   sendTyping: () => {},
   sendMessage: () => {},
   markConversationRead: () => {},
+  updateDisplayName: async () => {},
   login: async () => {},
   register: async () => {},
 });
@@ -89,6 +93,7 @@ const IdentityContext = createContext<IdentityValue>({
 export function IdentityProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
+  const [token, setToken] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
@@ -161,6 +166,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     newDisplayName: string,
     newOtherUsers: UserSummary[],
   ) {
+    setToken(token);
     setUserId(newUserId);
     setDeviceId(newDeviceId);
     setDisplayName(newDisplayName);
@@ -185,6 +191,11 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     generateAndPublishDeviceKeys(session.device_id, session.token).catch((error) => {
       console.warn('Falha ao gerar/publicar chaves E2E do dispositivo:', error);
     });
+  }
+
+  async function updateDisplayName(newDisplayName: string) {
+    if (!token) throw new Error('Sem sessão');
+    setDisplayName(await updateDisplayNameRequest(token, newDisplayName));
   }
 
   async function register(username: string, password: string) {
@@ -263,6 +274,21 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      if (payload.type === 'user_updated') {
+        if (payload.user.user_id === userId) {
+          setDisplayName(payload.user.display_name);
+          return;
+        }
+        setOtherUsers((prev) =>
+          prev.map((user) =>
+            user.user_id === payload.user.user_id
+              ? { ...user, display_name: payload.user.display_name }
+              : user,
+          ),
+        );
+        return;
+      }
+
       if (payload.type === 'sent') {
         outgoingQueue?.confirmSent(payload.client_message_id);
         updateMyStatus([payload.client_message_id], 'sent');
@@ -314,7 +340,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
           });
       }
     },
-    [deviceId, outgoingQueue, updateMyStatus, rememberConversation, setConversationTyping],
+    [userId, deviceId, outgoingQueue, updateMyStatus, rememberConversation, setConversationTyping],
   );
 
   const { send } = useSocketConnection(deviceId, handlePayload, () => {
@@ -425,6 +451,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
         sendTyping,
         sendMessage,
         markConversationRead,
+        updateDisplayName,
         login,
         register,
       }}

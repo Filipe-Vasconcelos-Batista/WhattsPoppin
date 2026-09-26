@@ -90,6 +90,9 @@ aparecem um ao outro na lista de conversas.
 - **"A escrever"**: enquanto o outro escreve, aparecem três pontos no fundo
   da conversa e "a escrever…" na lista. É um evento efémero, que o servidor
   nunca guarda.
+- **Nome de exibição editável** em "O meu perfil" (o botão de definições na
+  lista). Os outros veem o nome novo logo, sem refresh; o nome de
+  utilizador com que entras não muda.
 - O WebSocket reconecta-se sozinho se o backend reiniciar.
 - **Fila offline:** mensagens para quem não está ligado ficam guardadas no
   servidor (só o envelope cifrado) e são entregues quando o dispositivo se

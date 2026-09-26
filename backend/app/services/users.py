@@ -14,6 +14,26 @@ class UserSummary:
     conversation_id: uuid.UUID | None = None
 
 
+MAX_DISPLAY_NAME_LENGTH = 80
+
+
+class DisplayNameError(Exception):
+    pass
+
+
+def update_display_name(user_id: uuid.UUID, display_name: str) -> str:
+    display_name = display_name.strip()
+    if not display_name:
+        raise DisplayNameError("O nome de exibição não pode ficar vazio")
+    if len(display_name) > MAX_DISPLAY_NAME_LENGTH:
+        raise DisplayNameError(
+            f"O nome de exibição tem no máximo {MAX_DISPLAY_NAME_LENGTH} caracteres"
+        )
+
+    User.update(display_name=display_name).where(User.id == user_id).execute()
+    return display_name
+
+
 def list_other_users(exclude_user_id: uuid.UUID) -> list[UserSummary]:
     users = User.select().where(User.id != exclude_user_id).order_by(User.created_at)
     return [

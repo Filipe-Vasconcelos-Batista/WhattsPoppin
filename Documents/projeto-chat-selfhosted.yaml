@@ -66,6 +66,11 @@ estado_de_implementacao:
       aos devices ligados da conversa (nunca vai para a fila nem para a BD);
       aparece como bolha de três pontos no fundo da conversa e como
       "a escrever…" na lista. Detalhe em mensagens_entrega_e_estado.a_escrever
+    - nome de exibição editável no ecrã "O meu perfil" (botão de definições
+      da lista). Começa igual ao username do registo; PATCH
+      /users/me/display_name com o token da sessão (trim, 1-80 caracteres);
+      o servidor avisa os outros devices ligados com o evento user_updated,
+      e a lista deles atualiza sem refresh. O username (para entrar) não muda
   simplificacoes_temporarias:
     - cifra só em 1:1 e com arestas conhecidas - inícios de sessão
       simultâneos podem perder as mensagens que se cruzam (sem arquivo de
@@ -73,7 +78,7 @@ estado_de_implementacao:
     - sem federação - identificador é só o username local, sem
       user@servidor, .well-known, handshake nem federated_servers
     - sem alcunha nem deteção de ambiguidade - mostra-se sempre o nome de
-      exibição (= username escolhido no registo)
+      exibição
     - registo aberto, sem código de convite nem aprovação de admin
     - ecrã de login sem campo "Servidor" (assume-se sempre este servidor)
     - recibos de leitura sempre ligados (sem opção de privacidade) e sem
@@ -86,7 +91,7 @@ estado_de_implementacao:
       privadas estão no localStorage sem cifra. Requisito - poder usar a
       web em qualquer máquina, incluindo partilhadas. Desenho (fora do
       MVP) em cifra.protecao_dos_dados_no_dispositivo
-    - nome de exibição editável, alcunhas, deteção de ambiguidade
+    - alcunhas, deteção de ambiguidade
     - backup e restauro de chaves (praticamente tudo, depende da cifra)
     - multi-dispositivo - hoje cada login novo cria um Device sem ligação
       nenhuma aos anteriores, sem partilha de histórico entre eles

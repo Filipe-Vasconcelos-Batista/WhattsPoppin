@@ -31,7 +31,7 @@ export default function ConversationsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
-        <ConversationsHeader />
+        <ConversationsHeader onSettingsPress={() => router.push('/profile')} />
       </View>
 
       {identity.otherUsers.length === 0 ? (
