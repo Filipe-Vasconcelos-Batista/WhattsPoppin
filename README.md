@@ -87,6 +87,9 @@ aparecem um ao outro na lista de conversas.
   hora ("14:32", "Ontem", "Ter") e quantas estão por ler; a que recebeu ou
   enviou a mensagem mais recente sobe para o topo. Na web, o separador do
   browser mostra o total por ler, por exemplo "(3) WhattsPoppin".
+- **"A escrever"**: enquanto o outro escreve, aparecem três pontos no fundo
+  da conversa e "a escrever…" na lista. É um evento efémero, que o servidor
+  nunca guarda.
 - O WebSocket reconecta-se sozinho se o backend reiniciar.
 - **Fila offline:** mensagens para quem não está ligado ficam guardadas no
   servidor (só o envelope cifrado) e são entregues quando o dispositivo se

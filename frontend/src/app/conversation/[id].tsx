@@ -75,12 +75,18 @@ export default function ConversationScreen() {
         keyboardVerticalOffset={12}
       >
         <View style={styles.messages}>
-          <MessageList messages={messages} />
+          <MessageList
+            messages={messages}
+            typing={identity.typingConversations.has(conversationId)}
+          />
         </View>
 
         <KeyboardStickyView>
           <View style={styles.inputBar}>
-            <MessageInputBar onSend={(text) => identity.sendMessage(conversationId, text)} />
+            <MessageInputBar
+              onSend={(text) => identity.sendMessage(conversationId, text)}
+              onTypingChange={(typing) => identity.sendTyping(conversationId, typing)}
+            />
           </View>
         </KeyboardStickyView>
       </KeyboardAvoidingView>

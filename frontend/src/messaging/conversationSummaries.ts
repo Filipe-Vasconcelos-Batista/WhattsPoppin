@@ -3,6 +3,7 @@ import type { ChatMessage, ConversationSummary } from '../types/chat';
 import { formatListTime } from '../utils/time';
 
 const EMPTY_PREVIEW = 'Toca para conversar';
+const TYPING_PREVIEW = 'a escrever…';
 
 type Latest = { message: ChatMessage; index: number; unread: number };
 
@@ -10,9 +11,15 @@ export function buildConversationSummaries(
   otherUsers: UserSummary[],
   messages: ChatMessage[],
   conversationUsers: Record<string, string>,
-  now: Date = new Date(),
+  {
+    typingConversations = new Set<string>(),
+    now = new Date(),
+  }: { typingConversations?: ReadonlySet<string>; now?: Date } = {},
 ): ConversationSummary[] {
   const latestByUser = new Map<string, Latest>();
+  const typingUsers = new Set(
+    [...typingConversations].map((conversationId) => conversationUsers[conversationId]),
+  );
 
   // O array está por ordem de chegada - a posição serve de ordem, também para
   // mensagens antigas sem sentAt.
@@ -29,13 +36,19 @@ export function buildConversationSummaries(
 
   const summaries = otherUsers.map((user, order) => {
     const latest = latestByUser.get(user.user_id);
+    const isTyping = typingUsers.has(user.user_id);
     const summary: ConversationSummary = {
       id: user.user_id,
       title: user.display_name,
       initials: initialsFor(user.display_name),
-      lastMessagePreview: latest ? previewFor(latest.message) : EMPTY_PREVIEW,
+      lastMessagePreview: isTyping
+        ? TYPING_PREVIEW
+        : latest
+          ? previewFor(latest.message)
+          : EMPTY_PREVIEW,
       timeLabel: latest ? timeFor(latest.message, now) : '',
       unreadCount: latest?.unread,
+      isTyping,
     };
     return { summary, rank: latest ? latest.index : -1, order };
   });

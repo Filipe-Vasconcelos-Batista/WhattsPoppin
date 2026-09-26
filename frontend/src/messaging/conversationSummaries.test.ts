@@ -28,7 +28,7 @@ function text(
 
 describe('buildConversationSummaries', () => {
   it('sem mensagens, mantém a ordem do servidor e o convite para conversar', () => {
-    const summaries = buildConversationSummaries([ANA, RUI], [], CONVERSATION_USERS, NOW);
+    const summaries = buildConversationSummaries([ANA, RUI], [], CONVERSATION_USERS, { now: NOW });
 
     expect(summaries.map((summary) => summary.id)).toEqual(['ana', 'rui']);
     expect(summaries[0]).toMatchObject({
@@ -43,7 +43,7 @@ describe('buildConversationSummaries', () => {
   it('mostra a última mensagem, com "Tu:" quando é minha', () => {
     const messages = [text('c-ana', 'them', 'olá'), text('c-ana', 'me', 'tudo bem?')];
 
-    const [ana] = buildConversationSummaries([ANA], messages, CONVERSATION_USERS, NOW);
+    const [ana] = buildConversationSummaries([ANA], messages, CONVERSATION_USERS, { now: NOW });
 
     expect(ana.lastMessagePreview).toBe('Tu: tudo bem?');
   });
@@ -51,12 +51,9 @@ describe('buildConversationSummaries', () => {
   it('a conversa com a mensagem mais recente vai para o topo; sem conversa fica no fim', () => {
     const messages = [text('c-ana', 'them', 'primeiro'), text('c-rui', 'them', 'depois')];
 
-    const summaries = buildConversationSummaries(
-      [EVA, ANA, RUI],
-      messages,
-      CONVERSATION_USERS,
-      NOW,
-    );
+    const summaries = buildConversationSummaries([EVA, ANA, RUI], messages, CONVERSATION_USERS, {
+      now: NOW,
+    });
 
     expect(summaries.map((summary) => summary.id)).toEqual(['rui', 'ana', 'eva']);
   });
@@ -70,7 +67,7 @@ describe('buildConversationSummaries', () => {
       text('c-ana', 'them', 'nova 2'),
     ];
 
-    const summaries = buildConversationSummaries([ANA], messages, CONVERSATION_USERS, NOW);
+    const summaries = buildConversationSummaries([ANA], messages, CONVERSATION_USERS, { now: NOW });
 
     expect(summaries[0].unreadCount).toBe(2);
     expect(totalUnread(summaries)).toBe(2);
@@ -82,8 +79,10 @@ describe('buildConversationSummaries', () => {
     ];
     const withoutSentAt = [text('c-rui', 'them', 'antiga')];
 
-    const [ana] = buildConversationSummaries([ANA], withSentAt, CONVERSATION_USERS, NOW);
-    const [rui] = buildConversationSummaries([RUI], withoutSentAt, CONVERSATION_USERS, NOW);
+    const [ana] = buildConversationSummaries([ANA], withSentAt, CONVERSATION_USERS, { now: NOW });
+    const [rui] = buildConversationSummaries([RUI], withoutSentAt, CONVERSATION_USERS, {
+      now: NOW,
+    });
 
     expect(ana.timeLabel).toBe('Ontem');
     expect(rui.timeLabel).toBe('10:00');
@@ -94,10 +93,24 @@ describe('buildConversationSummaries', () => {
       [ANA],
       [text('c-desconhecida', 'them', 'olá')],
       CONVERSATION_USERS,
-      NOW,
+      { now: NOW },
     );
 
     expect(summaries[0].lastMessagePreview).toBe('Toca para conversar');
+  });
+
+  it('quem está a escrever mostra "a escrever…" em vez da última mensagem', () => {
+    const summaries = buildConversationSummaries(
+      [ANA, RUI],
+      [text('c-ana', 'them', 'olá'), text('c-rui', 'them', 'olá')],
+      CONVERSATION_USERS,
+      { typingConversations: new Set(['c-ana']), now: NOW },
+    );
+    const ana = summaries.find((summary) => summary.id === 'ana');
+    const rui = summaries.find((summary) => summary.id === 'rui');
+
+    expect(ana).toMatchObject({ lastMessagePreview: 'a escrever…', isTyping: true });
+    expect(rui).toMatchObject({ lastMessagePreview: 'olá', isTyping: false });
   });
 });
 

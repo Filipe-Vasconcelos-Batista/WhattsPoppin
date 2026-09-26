@@ -22,6 +22,7 @@ import { useSocketConnection } from '../hooks/useSocketConnection';
 import { newClientMessageId } from '../messaging/clientMessageId';
 import { createOutgoingQueue } from '../messaging/outgoingQueue';
 import { advanceStatus } from '../messaging/status';
+import { TYPING_EXPIRE_MS } from '../messaging/typingSignal';
 import { loadMessages, saveMessages } from '../storage/messageStore';
 import { formatTimeNow } from '../utils/time';
 import type { ChatMessage, MessageStatus } from '../types/chat';
@@ -46,6 +47,7 @@ type IncomingPayload =
       conversation_id: string;
       client_message_ids: string[];
     }
+  | { type: 'typing'; conversation_id: string; sender_user_id: string; typing: boolean }
   | { type: 'user_registered'; user: UserSummary };
 
 type IdentityValue = {
@@ -58,6 +60,8 @@ type IdentityValue = {
   messages: ChatMessage[];
   conversationUsers: Record<string, string>;
   rememberConversation: (otherUserId: string, conversationId: string) => void;
+  typingConversations: ReadonlySet<string>;
+  sendTyping: (conversationId: string, typing: boolean) => void;
   sendMessage: (conversationId: string, text: string) => void;
   markConversationRead: (conversationId: string) => void;
   login: (username: string, password: string) => Promise<void>;
@@ -74,6 +78,8 @@ const IdentityContext = createContext<IdentityValue>({
   messages: [],
   conversationUsers: {},
   rememberConversation: () => {},
+  typingConversations: new Set(),
+  sendTyping: () => {},
   sendMessage: () => {},
   markConversationRead: () => {},
   login: async () => {},
@@ -89,6 +95,10 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
   const [otherUsers, setOtherUsers] = useState<UserSummary[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [conversationUsers, setConversationUsers] = useState<Record<string, string>>({});
+  const [typingConversations, setTypingConversations] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const typingTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   // Mensagens recebidas já tratadas, por `${sender_device_id}:${client_message_id}`
   // - o servidor reenvia o que não recebeu ack e quem envia pode reenviar da
   // outbox; decifrar a mesma mensagem duas vezes falharia (a chave já foi usada).
@@ -208,9 +218,41 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  const setConversationTyping = useCallback((conversationId: string, typing: boolean) => {
+    const timers = typingTimersRef.current;
+    const timer = timers.get(conversationId);
+    if (timer) clearTimeout(timer);
+    timers.delete(conversationId);
+
+    if (typing) {
+      timers.set(
+        conversationId,
+        setTimeout(() => setConversationTyping(conversationId, false), TYPING_EXPIRE_MS),
+      );
+    }
+    setTypingConversations((prev) => {
+      if (prev.has(conversationId) === typing) return prev;
+      const next = new Set(prev);
+      if (typing) next.add(conversationId);
+      else next.delete(conversationId);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const timers = typingTimersRef.current;
+    return () => timers.forEach((timer) => clearTimeout(timer));
+  }, []);
+
   const handlePayload = useCallback(
     (raw: unknown) => {
       const payload = raw as IncomingPayload;
+
+      if (payload.type === 'typing') {
+        rememberConversation(payload.sender_user_id, payload.conversation_id);
+        setConversationTyping(payload.conversation_id, payload.typing);
+        return;
+      }
 
       if (payload.type === 'user_registered') {
         setOtherUsers((prev) =>
@@ -241,9 +283,8 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
           ack();
           return;
         }
-        // Marcado antes de decifrar: uma segunda cópia que chegue entretanto
-        // não é decifrada outra vez.
         seenMessageIdsRef.current.add(key);
+        setConversationTyping(payload.conversation_id, false);
         if (payload.sender_user_id) {
           rememberConversation(payload.sender_user_id, payload.conversation_id);
         }
@@ -273,7 +314,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
           });
       }
     },
-    [deviceId, outgoingQueue, updateMyStatus, rememberConversation],
+    [deviceId, outgoingQueue, updateMyStatus, rememberConversation, setConversationTyping],
   );
 
   const { send } = useSocketConnection(deviceId, handlePayload, () => {
@@ -292,6 +333,10 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     if (!userId) return;
     saveMessages(userId, messages);
   }, [userId, messages]);
+
+  const sendTyping = useCallback((conversationId: string, typing: boolean) => {
+    sendRef.current({ type: 'typing', conversation_id: conversationId, typing });
+  }, []);
 
   function sendMessage(conversationId: string, text: string) {
     const clientMessageId = newClientMessageId();
@@ -376,6 +421,8 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
         messages,
         conversationUsers,
         rememberConversation,
+        typingConversations,
+        sendTyping,
         sendMessage,
         markConversationRead,
         login,

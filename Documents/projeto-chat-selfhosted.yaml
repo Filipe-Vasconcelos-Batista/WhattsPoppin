@@ -62,6 +62,10 @@ estado_de_implementacao:
       local (seen), separado do recibo de leitura - abrir a conversa com o
       socket em baixo limpa o contador na mesma. Na web, o título do
       separador mostra o total por ler
+    - indicador "a escrever" - evento typing no WebSocket, reencaminhado só
+      aos devices ligados da conversa (nunca vai para a fila nem para a BD);
+      aparece como bolha de três pontos no fundo da conversa e como
+      "a escrever…" na lista. Detalhe em mensagens_entrega_e_estado.a_escrever
   simplificacoes_temporarias:
     - cifra só em 1:1 e com arestas conhecidas - inícios de sessão
       simultâneos podem perder as mensagens que se cruzam (sem arquivo de
@@ -74,8 +78,6 @@ estado_de_implementacao:
     - ecrã de login sem campo "Servidor" (assume-se sempre este servidor)
     - recibos de leitura sempre ligados (sem opção de privacidade) e sem
       estado "falhou" - uma mensagem que não se consegue cifrar fica pending
-    - indicador "a escrever" existe como componente mas não está ligado a
-      nenhum evento real
     - mensagens no cliente ficam em localStorage/AsyncStorage, não
       IndexedDB - decisão consciente de não otimizar prematuramente
       (quota ~5-10MB, muito acima do que se está a usar agora)
@@ -317,6 +319,18 @@ mensagens_entrega_e_estado:
     persistencia: nenhuma - nunca gravado em BD
     retry: nenhum - evento efémero, só WebSocket
     cliente: debounce (~3s desde a última tecla), envia stop explícito ao enviar mensagem
+    implementado:
+      envio: >
+        typing=true na primeira tecla, repetido no máximo a cada 3s enquanto
+        escreve; typing=false após 3s sem teclas, ao enviar, ao apagar o
+        texto todo e ao sair do ecrã (messaging/typingSignal.ts)
+      rececao: >
+        expira sozinho ao fim de 5s sem novo evento (cobre um false perdido
+        ou o outro lado a cair) e é limpo quando chega uma mensagem dessa
+        conversa
+      servidor: >
+        só reencaminha para os devices da conversa que estão ligados agora,
+        com sender_user_id tirado da ligação
 
 notificacoes_push:
   mobile:

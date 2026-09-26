@@ -64,6 +64,12 @@ class ReadIn(BaseModel):
     receipts: list[ReadReceiptIn] = Field(max_length=MAX_ENVELOPES)
 
 
+class TypingIn(BaseModel):
+    type: Literal["typing"]
+    conversation_id: uuid.UUID
+    typing: bool
+
+
 async def _deliver(device_id: uuid.UUID, message_id: uuid.UUID, payload: dict[str, Any]) -> None:
     await connection_manager.send_to_device(device_id, {**payload, "message_id": str(message_id)})
 
@@ -160,6 +166,21 @@ async def _handle_read(reader_device_id: uuid.UUID, read: ReadIn) -> None:
         )
 
 
+async def _handle_typing(sender_device_id: uuid.UUID, typing: TypingIn) -> None:
+    recipients = await run_sync(find_recipient_device_ids, typing.conversation_id, sender_device_id)
+    sender_user_id = await run_sync(user_id_of_device, sender_device_id)
+    for device_id in recipients:
+        await connection_manager.send_to_device(
+            device_id,
+            {
+                "type": "typing",
+                "conversation_id": str(typing.conversation_id),
+                "sender_user_id": str(sender_user_id),
+                "typing": typing.typing,
+            },
+        )
+
+
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, device_id: uuid.UUID) -> None:
     await websocket.accept()
@@ -173,12 +194,15 @@ async def websocket_endpoint(websocket: WebSocket, device_id: uuid.UUID) -> None
             data = await websocket.receive_json()
             kind = data.get("type") if isinstance(data, dict) else None
             try:
-                if kind == "ack":
-                    await _handle_ack(device_id, AckIn.model_validate(data))
-                elif kind == "read":
-                    await _handle_read(device_id, ReadIn.model_validate(data))
-                else:
-                    await _handle_message(device_id, OutgoingMessage.model_validate(data))
+                match kind:
+                    case "ack":
+                        await _handle_ack(device_id, AckIn.model_validate(data))
+                    case "read":
+                        await _handle_read(device_id, ReadIn.model_validate(data))
+                    case "typing":
+                        await _handle_typing(device_id, TypingIn.model_validate(data))
+                    case _:
+                        await _handle_message(device_id, OutgoingMessage.model_validate(data))
             except ValidationError:
                 continue
     except WebSocketDisconnect:

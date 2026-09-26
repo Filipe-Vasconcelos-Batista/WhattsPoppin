@@ -14,6 +14,7 @@ export type ConversationSummary = {
   lastMessagePreview: string;
   timeLabel: string;
   unreadCount?: number;
+  isTyping?: boolean;
   isGroup?: boolean;
 };
 

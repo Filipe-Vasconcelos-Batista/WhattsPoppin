@@ -12,10 +12,11 @@ import { colors } from '../theme/colors';
 
 export default function ConversationsScreen() {
   const identity = useIdentity();
-  const { otherUsers, messages, conversationUsers } = identity;
+  const { otherUsers, messages, conversationUsers, typingConversations } = identity;
   const summaries = useMemo(
-    () => buildConversationSummaries(otherUsers, messages, conversationUsers),
-    [otherUsers, messages, conversationUsers],
+    () =>
+      buildConversationSummaries(otherUsers, messages, conversationUsers, { typingConversations }),
+    [otherUsers, messages, conversationUsers, typingConversations],
   );
   const unread = totalUnread(summaries);
 
