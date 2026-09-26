@@ -4,10 +4,11 @@ App de chat self-hosted federada, cifrada ponta-a-ponta. Cada pessoa ou grupo
 de amigos corre o próprio servidor; os servidores federam entre si (como
 email), sem depender de infraestrutura de terceiros.
 
-**Estado:** prova de conceito — registo, login e mensagens de texto 1:1 em
-tempo real, **cifradas ponta-a-ponta** (X3DH + Double Ratchet), testado
-entre dispositivos diferentes na mesma rede. O servidor só encaminha
-ciphertext. Ainda faltam várias peças do desenho final (ver
+**Estado: v0.1.0 — MVP concluído.** Registo, login e mensagens de texto 1:1
+em tempo real, **cifradas ponta-a-ponta** (X3DH + Double Ratchet), com fila
+offline, estados de mensagem e lista de conversas viva, testado entre
+dispositivos diferentes na mesma rede. O servidor só encaminha ciphertext.
+Ainda não é para uso real: faltam várias peças do desenho final (ver
 [Limitações conhecidas](#limitações-conhecidas), e o estado completo em
 [`Documents/projeto-chat-selfhosted.yaml`](./Documents/projeto-chat-selfhosted.yaml)).
 
@@ -16,6 +17,11 @@ ciphertext. Ainda faltam várias peças do desenho final (ver
 Mensagens de texto 1:1 cifradas entre dois utilizadores do mesmo servidor,
 num só cliente (versão web). Sem federação, grupos, figurinhas ou push
 nesta primeira versão — tudo o resto constrói-se por cima disto.
+
+**Cumprido na v0.1.0.** As versões seguem o [SemVer](https://semver.org/lang/pt-BR/):
+enquanto estiver em `0.x`, a API e o protocolo podem mudar entre versões.
+A `1.0.0` fica para quando as limitações de segurança abaixo estiverem
+resolvidas e houver deploy a sério (HTTPS).
 
 ## Stack
 

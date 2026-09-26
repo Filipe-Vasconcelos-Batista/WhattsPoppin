@@ -1,6 +1,7 @@
 projeto: WhattsPoppin - App de chat self-hosted federada
 dominio: whattspoppin.io (ou semelhante) - a tratar mais tarde (DNS, certificados, etc.)
 licenca: AGPL-3.0 (escolha do owner, não imposta por nenhuma biblioteca)
+versao: 0.1.0 (MVP concluído; SemVer - em 0.x a API e o protocolo ainda podem mudar)
 mvp: >
   Mensagens de texto 1:1 cifradas entre dois utilizadores do mesmo servidor,
   num só cliente. Sem federação, grupos, figurinhas ou push nesta primeira
@@ -13,12 +14,16 @@ conceito: >
 
 estado_de_implementacao:
   resumo: >
-    Prova de conceito a funcionar - dois ou mais utilizadores conseguem
-    criar conta, ver-se na lista e trocar mensagens de texto 1:1 em tempo
-    real, cifradas ponta-a-ponta (X3DH + Double Ratchet próprios), testado
-    entre dispositivos diferentes na mesma rede local. O MVP definido
-    acima está cumprido; faltam várias peças do desenho final que foram
-    conscientemente simplificadas para chegar aqui mais depressa.
+    v0.1.0 - MVP concluído. Dois ou mais utilizadores conseguem criar
+    conta, ver-se na lista e trocar mensagens de texto 1:1 em tempo real,
+    cifradas ponta-a-ponta (X3DH + Double Ratchet próprios), com fila
+    offline, estados de mensagem, lista de conversas viva, "a escrever" e
+    nome de exibição editável - testado entre dispositivos diferentes na
+    mesma rede local. Faltam várias peças do desenho final que foram
+    conscientemente simplificadas para chegar aqui mais depressa; a 1.0.0
+    fica para quando as de segurança (dados no dispositivo, verificação de
+    identidade, CORS, registo aberto) estiverem resolvidas e houver deploy
+    com HTTPS.
   construido:
     - repositório com frontend (Expo + React Native + TypeScript) e backend
       (FastAPI + Peewee + PostgreSQL), lint/typecheck/testes configurados
