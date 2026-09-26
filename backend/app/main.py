@@ -10,7 +10,7 @@ from app.api.devices import router as devices_router
 from app.api.users import router as users_router
 from app.api.ws import router as ws_router
 
-app = FastAPI(title="WatsPoppin", version="0.0.1")
+app = FastAPI(title="WatsPoppin", version="0.1.0")
 
 # MVP local: frontend corre noutra porta (Expo web). Sem cifra ainda, tudo
 # em localhost - apertar isto é trabalho para quando isto sair de casa.
