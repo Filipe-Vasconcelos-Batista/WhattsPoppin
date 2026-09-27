@@ -1,7 +1,9 @@
 projeto: WhattsPoppin - App de chat self-hosted federada
 dominio: whattspoppin.io (ou semelhante) - a tratar mais tarde (DNS, certificados, etc.)
 licenca: AGPL-3.0 (escolha do owner, não imposta por nenhuma biblioteca)
-versao: 0.1.0 (MVP concluído; SemVer - em 0.x a API e o protocolo ainda podem mudar)
+versao: >
+  0.1.0 (MVP concluído; SemVer - em 0.x a API e o protocolo ainda podem mudar).
+  Em curso: 0.2.0 - federação entre servidores (ver proxima_versao e federacao)
 mvp: >
   Mensagens de texto 1:1 cifradas entre dois utilizadores do mesmo servidor,
   num só cliente. Sem federação, grupos, figurinhas ou push nesta primeira
@@ -81,7 +83,13 @@ estado_de_implementacao:
       simultâneos podem perder as mensagens que se cruzam (sem arquivo de
       sessões), sem rotação de SPK, sem reposição automática de OPKs
     - sem federação - identificador é só o username local, sem
-      user@servidor, .well-known, handshake nem federated_servers
+      user@servidor, .well-known, assinatura de pedidos nem
+      federated_servers (é o trabalho da 0.2.0, ver proxima_versao)
+    - autenticação local fraca - o /ws aceita qualquer device_id sem token,
+      e /conversations/with, /conversations/{id}/devices e
+      /devices/{id}/prekey-bundle confiam no user_id/device_id que o cliente
+      manda. Resolve-se na fase F0 da 0.2.0, antes da federação, porque os
+      outros servidores vão acreditar no que o nosso diz sobre quem enviou
     - sem alcunha nem deteção de ambiguidade - mostra-se sempre o nome de
       exibição
     - registo aberto, sem código de convite nem aprovação de admin
@@ -100,9 +108,53 @@ estado_de_implementacao:
     - backup e restauro de chaves (praticamente tudo, depende da cifra)
     - multi-dispositivo - hoje cada login novo cria um Device sem ligação
       nenhuma aos anteriores, sem partilha de histórico entre eles
-    - federação, grupos, figurinhas/GIFs, QR codes, notificações push
+    - federação (em curso, 0.2.0), grupos, figurinhas/GIFs, QR codes,
+      notificações push
     - administração (papéis, moderação, ecrã de admin)
     - empacotamento Linux (Flatpak)
+
+proxima_versao:
+  versao: 0.2.0
+  tema: federação entre servidores
+  objetivo: >
+    alice@servidor-a e bob@servidor-b trocam mensagens 1:1 cifradas entre
+    dois servidores independentes, com fila offline, recibos e "a escrever",
+    sem o cliente falar com outro servidor que não o seu. Fechar isto marca
+    a 0.2.0.
+  porque_agora: >
+    A federação é o que distingue o projeto e é a peça que mais mexe no que
+    já existe (identificadores, modelo de dados, entrega). Páginas que
+    faltam, convites, admin e proteção dos dados no dispositivo não mudam
+    por causa dela, por isso ficam para depois; a autenticação entre
+    servidores faz parte da própria federação e não se adia.
+  fases:
+    F0: >
+      autenticação local a sério - /ws e endpoints REST exigem o token da
+      sessão, o user/device sai dele e não do cliente
+    F1: protocolo escrito na secção federacao deste yaml
+    F2: >
+      identificador user@domínio (coluna domain em users) + ambiente de dev
+      com dois servidores (duas BDs, portas 8001/8002, frontend com
+      EXPO_PUBLIC_API_URL)
+    F3: >
+      identidade do servidor - chave de assinatura, .well-known, assinatura
+      e verificação de pedidos, tabela federated_servers (TOFU)
+    F4: perfil remoto, utilizadores-sombra, ecrã "Adicionar contacto"
+    F5: devices e prekey bundles remotos por proxy no servidor local
+    F6: >
+      entrega federada - federation_outbox + worker com backoff,
+      PUT /_federation/v1/send/{txn_id}, recibos delivered/read entre servidores
+    F7: >
+      "a escrever" e mudanças de nome entre servidores (efémeros, sem retry)
+  pronto_quando: >
+    Dois servidores locais com um cliente cada - adicionar contacto do outro
+    servidor, trocar mensagens nos dois sentidos com ✓/✓✓/lida, desligar o
+    servidor B, enviar, religar e a mensagem chega, "a escrever" entre
+    servidores, e mudar a chave do servidor B faz o A recusá-lo.
+  fora_de_ambito: >
+    verificação de identidade (número de segurança/QR - prioridade logo a
+    seguir, porque as chaves passam a vir de servidores que não
+    controlamos), deploy com HTTPS, ecrã de admin, grupos
 
 stack:
   frontend:
@@ -263,13 +315,92 @@ cifra:
     limite às chaves saltadas, grupos (Sender Keys) e revisão externa.
 
 federacao:
-  descoberta: .well-known/chatapp/server
-  handshake: desafio + assinatura Ed25519, bidirecional, gravado uma vez em federated_servers
+  estado: desenho fechado, implementação em curso (0.2.0, ver proxima_versao)
+  protocolo: >
+    Próprio, HTTPS + JSON, com os endpoints entre servidores em
+    /_federation/v1/... Matrix e XMPP foram postos de parte - o Matrix é
+    enorme (salas como DAG, resolução de estado) e preso ao Olm/Megolm, que
+    abandonámos; o XMPP obrigava a outro servidor ou a uma pilha XML nova e
+    a trocar a cifra por OMEMO. Um protocolo pequeno encaixa na cifra que já
+    existe.
+  identificador: >
+    user@domínio (ex. alice@casa.pt, ou localhost:8001 em dev). O domínio é
+    o SERVER_NAME do servidor onde a conta vive.
+  descoberta:
+    endpoint: GET /.well-known/whattspoppin/server
+    resposta: '{server_name, versions: ["1"], verify_keys: {"ed25519:1": <b64>}}'
+    versoes: >
+      o campo versions diz que versões do protocolo o servidor fala - dois
+      servidores em versões diferentes escolhem a mais alta em comum
+  chave_do_servidor: >
+    Ed25519, gerada no primeiro arranque e guardada num ficheiro fora da BD
+    (SERVER_SIGNING_KEY_PATH), pela mesma razão da chave_mestra - um dump da
+    BD roubado não chega para alguém se fazer passar pelo servidor.
+  autenticacao_dos_pedidos:
+    mecanismo: >
+      Cada pedido entre servidores vai assinado (não só o primeiro), num
+      header estilo Matrix:
+      Authorization: WP-Sig origin="a",destination="b",key="ed25519:1",ts="...",sig="..."
+    o_que_se_assina: >
+      JSON canónico {method, uri, origin, destination, ts, content_sha256}
+    rejeita: >
+      ts fora de ±5 minutos, destination diferente do nosso SERVER_NAME,
+      servidor bloqueado, ou chave diferente da fixada
+  confianca_na_chave_remota:
+    modelo: TOFU (trust on first use)
+    como: >
+      no primeiro contacto vai-se buscar a chave ao .well-known (por HTTPS)
+      e fixa-se em federated_servers. Se mais tarde a chave for outra,
+      recusa-se e regista-se - nunca se aceita sozinho.
+    porque_nao_handshake: >
+      o desenho inicial tinha um desafio + assinatura bidirecional; com todos
+      os pedidos assinados é uma ida e volta a mais sem ganho real
+  tabela_federated_servers: [domain, verify_key, key_id, trust_status, first_seen_at, last_seen_at]
   modos:
-    aberto: trusted automático após handshake (default escolhido)
-    restrito: fica pending até admin aprovar
+    aberto: trusted automático no primeiro contacto (default escolhido, o único na 0.2.0)
+    restrito: fica pending até admin aprovar (vem com o ecrã de admin)
   bloqueio: admin pode bloquear um domínio a qualquer momento (trust_status = blocked)
   quem_pode_iniciar_contacto_federado: qualquer membro, não só admins
+  utilizadores_remotos: >
+    Guardados como utilizadores-sombra (linha em users com o domain remoto
+    e sem password), e os devices deles como linhas em devices só com
+    chaves públicas. Assim as conversas e participantes continuam a usar as
+    mesmas tabelas. Um device id que já pertença a outro domínio é recusado.
+  conversas: >
+    Os ids de conversa não saem do servidor. Os eventos federados levam
+    identificadores de utilizador (alice@a, bob@b) e cada servidor traduz
+    para a sua conversa local (get_or_create_conversation). Assim nenhum
+    servidor tem de confiar em ids inventados por outro.
+  cliente_so_fala_com_o_seu_servidor: >
+    Devices e prekey bundles de utilizadores remotos são pedidos ao próprio
+    servidor, que os vai buscar ao remoto (proxy). O cliente não precisa de
+    CORS para outros domínios nem revela o IP a servidores alheios, e a
+    cifra no frontend não muda.
+  endpoints:
+    - GET  /_federation/v1/users/{username}/profile       # {identifier, display_name}
+    - GET  /_federation/v1/users/{username}/devices       # devices ativos com chaves
+    - POST /_federation/v1/devices/{id}/prekey-bundle     # POST porque gasta uma OPK
+    - PUT  /_federation/v1/send/{txn_id}                  # {events: [...]}
+  eventos:
+    duraveis: >
+      message e receipt - passam pela federation_outbox do lado de quem
+      envia (ver mensagens_entrega_e_estado.offline_federado)
+    efemeros: >
+      typing e user_updated - uma tentativa, sem retry, nunca gravados
+  validacao_no_recetor: >
+    o domínio do remetente tem de ser igual ao origin do pedido assinado, e
+    o device destino tem de pertencer a um utilizador local. Duplicados
+    (reenvio depois de um timeout) já são descartados pelo cliente por
+    (sender_device_id, client_message_id).
+  dependencias: >
+    cryptography (Ed25519 do servidor) e httpx (cliente HTTP entre
+    servidores, passa de dev para runtime). Sem Redis nem Celery - a fila é
+    uma tabela no Postgres e o worker uma tarefa asyncio no lifespan do FastAPI.
+  testes: >
+    O Peewee usa uma BD global, por isso não se sobem dois servidores no
+    mesmo processo de teste - pedidos de entrada testam-se com TestClient e
+    uma chave de teste, os de saída e o worker com httpx.MockTransport. O
+    teste ponta-a-ponta é manual, com dois servidores (8001/8002).
 
 papeis_e_administracao:
   papeis: [owner, admin, member]
@@ -309,7 +440,17 @@ mensagens_entrega_e_estado:
   offline_local: fica pending, entregue no reconnect (ordenado por created_at)
   offline_federado:
     mecanismo: federation_outbox
-    retry: backoff exponencial, máx. configurável, depois status = dead
+    tabela: [id, destination, payload, attempts, next_attempt_at, status, created_at]
+    fluxo: >
+      o servidor de quem envia grava o envelope na federation_outbox (e
+      manda logo o recibo "sent" - a partir daí não se perde); um worker
+      envia por ordem de created_at, por destino, com PUT
+      /_federation/v1/send/{txn_id}; o servidor recetor põe na
+      pending_messages do device destino como numa mensagem local
+    worker: >
+      tarefa asyncio no lifespan do FastAPI; pega nas linhas devidas com
+      FOR UPDATE SKIP LOCKED
+    retry: backoff exponencial com teto de 1 hora, máx. configurável, depois status = dead
   confirmacao_leitura:
     mecanismo: mesmo outbox, evento read_receipt
   retencao:
@@ -513,9 +654,6 @@ recuperacao_de_acesso_ao_servidor:
       para atualizar a pen levada para fora (ex. mensal)
 
 por_decidir:
-  - item: Versionamento do protocolo de federação
-    descricao: campo "version" no .well-known para servidores em versões diferentes continuarem a comunicar
-    prioridade: media
   - item: CGNAT do lado de quem se liga
     descricao: usar Cloudflare Tunnel se um amigo federado estiver atrás de CGNAT
     prioridade: baixa

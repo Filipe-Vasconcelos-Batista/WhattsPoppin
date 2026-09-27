@@ -23,6 +23,31 @@ enquanto estiver em `0.x`, a API e o protocolo podem mudar entre versões.
 A `1.0.0` fica para quando as limitações de segurança abaixo estiverem
 resolvidas e houver deploy a sério (HTTPS).
 
+## Próxima versão: 0.2.0 — federação (em curso)
+
+O objetivo é que `alice@servidor-a` e `bob@servidor-b` troquem mensagens 1:1
+cifradas entre dois servidores independentes, com fila offline, recibos e
+"a escrever". Cada cliente continua a falar só com o próprio servidor.
+
+- **Protocolo próprio, HTTPS + JSON** (`/_federation/v1/...`). Não usamos
+  Matrix nem XMPP, que são demasiado grandes e presos a outra cifra.
+- **Cada pedido entre servidores vai assinado** com a chave Ed25519 do
+  servidor.
+- **A chave de um servidor remoto fica fixada no primeiro contacto**
+  (_trust on first use_). Se mudar mais tarde, o pedido é recusado.
+- **Os ids de conversa não saem do servidor**. Os eventos levam
+  identificadores `user@domínio` e cada servidor traduz para a sua conversa.
+- **Mensagens para servidores remotos passam por uma fila**
+  (`federation_outbox`) com novas tentativas e espera crescente, se o outro
+  servidor estiver em baixo.
+
+As fases (F0 a F7), da autenticação local até ao "a escrever" entre
+servidores, estão em `proxima_versao` e o desenho do protocolo está em
+`federacao`, ambos no
+[`Documents/projeto-chat-selfhosted.yaml`](./Documents/projeto-chat-selfhosted.yaml).
+A verificação de identidade (número de segurança/QR) é a prioridade logo a
+seguir, porque as chaves passam a vir de servidores que não controlamos.
+
 ## Stack
 
 | Camada | Tecnologia |
@@ -145,6 +170,12 @@ aparecem um ao outro na lista de conversas.
   relógio.
 - **Sem alcunhas nem deteção de ambiguidade de nomes.**
 - **Um só dispositivo por utilizador**, sem multi-dispositivo a sério.
+- **Autenticação local fraca.** O WebSocket aceita qualquer `device_id`
+  sem token, e alguns endpoints confiam no utilizador/dispositivo que o
+  cliente indica. É a primeira coisa a corrigir na 0.2.0, antes da
+  federação.
+- **Sem federação** (em curso, ver acima): só conversas dentro do mesmo
+  servidor.
 - **Registo aberto**, sem código de convite nem aprovação de admin.
 - **Só localhost/rede local.** Testado só dentro de casa; ver
   `Documents/projeto-chat-selfhosted.yaml` para o desenho de produção
