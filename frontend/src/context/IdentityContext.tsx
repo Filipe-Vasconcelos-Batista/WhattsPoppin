@@ -11,7 +11,13 @@ import {
   type ReactNode,
 } from 'react';
 
-import { loginUser, registerUser, resumeSession, type UserSummary } from '../api/auth';
+import {
+  loginUser,
+  registerUser,
+  resumeSession,
+  type AuthResponse,
+  type UserSummary,
+} from '../api/auth';
 import { setSessionToken } from '../api/session';
 import { updateDisplayName as updateDisplayNameRequest } from '../api/users';
 import { generateAndPublishDeviceKeys } from '../crypto/keys';
@@ -59,6 +65,7 @@ type IdentityValue = {
   userId: string | null;
   deviceId: string | null;
   displayName: string | null;
+  identifier: string | null;
   otherUsers: UserSummary[];
   messages: ChatMessage[];
   conversationUsers: Record<string, string>;
@@ -78,6 +85,7 @@ const IdentityContext = createContext<IdentityValue>({
   userId: null,
   deviceId: null,
   displayName: null,
+  identifier: null,
   otherUsers: [],
   messages: [],
   conversationUsers: {},
@@ -98,6 +106,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [identifier, setIdentifier] = useState<string | null>(null);
   const [otherUsers, setOtherUsers] = useState<UserSummary[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [conversationUsers, setConversationUsers] = useState<Record<string, string>>({});
@@ -144,13 +153,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      await applySession(
-        session.token,
-        session.user_id,
-        session.device_id,
-        session.display_name,
-        session.other_users,
-      );
+      await applySession(session);
       setLoading(false);
     }
 
@@ -167,36 +170,25 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     AsyncStorage.removeItem(STORAGE_KEY);
   }
 
-  async function applySession(
-    token: string,
-    newUserId: string,
-    newDeviceId: string,
-    newDisplayName: string,
-    newOtherUsers: UserSummary[],
-  ) {
-    setSessionToken(token);
-    setToken(token);
-    setUserId(newUserId);
-    setDeviceId(newDeviceId);
-    setDisplayName(newDisplayName);
-    setOtherUsers(newOtherUsers);
-    setConversationUsers(conversationUsersFrom(newOtherUsers));
+  async function applySession(session: AuthResponse) {
+    setSessionToken(session.token);
+    setToken(session.token);
+    setUserId(session.user_id);
+    setDeviceId(session.device_id);
+    setDisplayName(session.display_name);
+    setIdentifier(session.identifier);
+    setOtherUsers(session.other_users);
+    setConversationUsers(conversationUsersFrom(session.other_users));
     setAuthenticated(true);
-    const storedMessages = await loadMessages(newUserId);
+    const storedMessages = await loadMessages(session.user_id);
     seenMessageIdsRef.current = new Set(storedMessages.map((message) => message.id));
     setMessages(storedMessages);
-    AsyncStorage.setItem(STORAGE_KEY, token);
+    AsyncStorage.setItem(STORAGE_KEY, session.token);
   }
 
   async function login(username: string, password: string) {
     const session = await loginUser(username, password);
-    await applySession(
-      session.token,
-      session.user_id,
-      session.device_id,
-      session.display_name,
-      session.other_users,
-    );
+    await applySession(session);
     generateAndPublishDeviceKeys(session.device_id).catch((error) => {
       console.warn('Falha ao gerar/publicar chaves E2E do dispositivo:', error);
     });
@@ -209,13 +201,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
 
   async function register(username: string, password: string) {
     const session = await registerUser(username, password);
-    await applySession(
-      session.token,
-      session.user_id,
-      session.device_id,
-      session.display_name,
-      session.other_users,
-    );
+    await applySession(session);
     generateAndPublishDeviceKeys(session.device_id).catch((error) => {
       console.warn('Falha ao gerar/publicar chaves E2E do dispositivo:', error);
     });
@@ -453,6 +439,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
         userId,
         deviceId,
         displayName,
+        identifier,
         otherUsers,
         messages,
         conversationUsers,

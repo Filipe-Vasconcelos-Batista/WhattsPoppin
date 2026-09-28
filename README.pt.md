@@ -116,7 +116,7 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
 set -a && source ../.env && set +a
 pw_migrate migrate --directory migrations --database "$DATABASE_URL"
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --host 0.0.0.0
 
 # 3. Frontend (noutro terminal)
 cd frontend
@@ -125,14 +125,43 @@ npm install
 npm run web
 ```
 
-Abre a app, cria uma conta em "Criar conta" (username + password, mínimo 12
-caracteres) e repete noutra aba/dispositivo com outro username — os dois
-aparecem um ao outro na lista de conversas.
+Abre a app, cria uma conta em "Criar conta" (username de 3 a 32 caracteres
+com `a-z 0-9 . _ -`, password com pelo menos 12) e repete noutra
+aba/dispositivo com outro username — os dois aparecem um ao outro na lista
+de conversas.
+
+O frontend descobre sozinho onde está o backend: na web usa o mesmo host
+da página (abrir `http://<IP-da-máquina>:8081` noutro dispositivo da rede
+também funciona), por isso não há IPs escritos no código. O `--host 0.0.0.0`
+do uvicorn é o que deixa os outros dispositivos da rede ligarem-se.
+
+### Dois servidores em dev (para a federação)
+
+```bash
+# uma vez: a BD do servidor B
+docker exec -it whattspoppin-postgres createdb -U whattspoppin whattspoppin_b
+
+# servidor A (localhost:8001, BD de dev) e B (localhost:8002), cada um no seu terminal
+backend/dev/run-server.sh a
+backend/dev/run-server.sh b
+
+# cliente web de cada um, também em terminais separados (dentro de frontend/)
+npm run web:a   # http://localhost:8091 -> servidor A
+npm run web:b   # http://localhost:8092 -> servidor B
+```
+
+O script aplica as migrações e arranca o uvicorn. Cada cliente tem o seu
+próprio `localStorage`, por isso as sessões não se misturam. Os dois
+servidores ainda não falam um com o outro — isso vem nas fases seguintes da
+0.2.0.
 
 ## O que já funciona
 
 - Registo e login reais (username + password), com sessão retomada
   automaticamente a partir de um token guardado no dispositivo.
+- Cada conta tem um identificador `user@domínio` (ex. `alice@casa.pt`),
+  visível em "O meu perfil" — é o que vais partilhar com contactos de
+  outros servidores.
 - Todos os pedidos e o WebSocket exigem esse token. O servidor tira dele
   quem és e só guarda o hash, e só quem está numa conversa consegue enviar
   para ela ou ver os dispositivos dela.

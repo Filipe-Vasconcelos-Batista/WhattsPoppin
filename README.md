@@ -114,7 +114,7 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
 set -a && source ../.env && set +a
 pw_migrate migrate --directory migrations --database "$DATABASE_URL"
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --host 0.0.0.0
 
 # 3. Frontend (in another terminal)
 cd frontend
@@ -123,14 +123,42 @@ npm install
 npm run web
 ```
 
-Open the app, create an account under "Criar conta" (username + password,
-at least 12 characters) and repeat in another tab/device with another
-username — the two show up in each other's conversation list.
+Open the app, create an account under "Criar conta" (a 3-32 character
+username using `a-z 0-9 . _ -`, and a password of at least 12) and repeat in
+another tab/device with another username — the two show up in each other's
+conversation list.
+
+The frontend works out where the backend is by itself: on the web it uses
+the page's own host (opening `http://<machine-IP>:8081` from another device
+on the network works too), so there are no IPs hard-coded. uvicorn's
+`--host 0.0.0.0` is what lets other devices on the network connect.
+
+### Two servers in dev (for federation)
+
+```bash
+# once: server B's database
+docker exec -it whattspoppin-postgres createdb -U whattspoppin whattspoppin_b
+
+# server A (localhost:8001, dev DB) and B (localhost:8002), each in its own terminal
+backend/dev/run-server.sh a
+backend/dev/run-server.sh b
+
+# each one's web client, also in separate terminals (inside frontend/)
+npm run web:a   # http://localhost:8091 -> server A
+npm run web:b   # http://localhost:8092 -> server B
+```
+
+The script applies the migrations and starts uvicorn. Each client has its
+own `localStorage`, so the sessions don't mix. The two servers don't talk to
+each other yet — that comes in the next phases of 0.2.0.
 
 ## What already works
 
 - Real sign-up and login (username + password), with the session resumed
   automatically from a token stored on the device.
+- Each account has a `user@domain` identifier (e.g. `alice@casa.pt`), shown
+  in "My profile" — it is what you will share with contacts on other
+  servers.
 - Every request and the WebSocket require that token. The server works out
   who you are from it and only stores its hash, and only the participants
   of a conversation can send to it or see its devices.

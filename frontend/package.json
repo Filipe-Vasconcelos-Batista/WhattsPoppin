@@ -36,6 +36,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "web:a": "expo start --web --port 8091",
+    "web:b": "expo start --web --port 8092",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

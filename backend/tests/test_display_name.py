@@ -54,5 +54,9 @@ def test_other_connected_devices_are_told_about_the_new_name(ws_client: TestClie
 
     assert event == {
         "type": "user_updated",
-        "user": {"user_id": alice["user_id"], "display_name": "Alice Nova"},
+        "user": {
+            "user_id": alice["user_id"],
+            "display_name": "Alice Nova",
+            "identifier": alice["identifier"],
+        },
     }

@@ -30,6 +30,7 @@ if not _test_db_name.endswith("_test"):
     )
 
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+os.environ["SERVER_NAME"] = "test.local"
 
 MIGRATE_TABLE = "migratehistory"
 

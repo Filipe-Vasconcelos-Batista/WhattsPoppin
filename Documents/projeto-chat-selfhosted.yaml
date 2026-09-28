@@ -46,6 +46,22 @@ estado_de_implementacao:
       de uma conversa só funcionam para quem é participante dela (quem não é
       recebe 404, não fica a saber que a conversa existe); o prekey bundle
       só se pede com sessão, para ninguém de fora esgotar as OPKs
+    - >
+      identificador user@domínio (F2 da 0.2.0) - cada servidor tem o seu
+      SERVER_NAME e cada conta um identificador (ex. alice@localhost:8001),
+      devolvido no login/sessão e mostrado em "O meu perfil". users.domain
+      fica NULL nas contas locais (só os utilizadores-sombra da F4 o
+      preenchem), por isso mudar o SERVER_NAME não reescreve contas; o
+      username é único por domínio, com dois índices parciais. Usernames em
+      minúsculas (registo e login convertem), 3-32 caracteres de a-z 0-9 . _ -
+    - >
+      dois servidores em dev - backend/dev/run-server.sh a|b arranca o
+      servidor A (localhost:8001, BD de dev) ou B (localhost:8002, BD
+      whattspoppin_b), com migrações e --host 0.0.0.0; npm run web:a|web:b
+      arranca o cliente web de cada um (portas 8091/8092, localStorage
+      separado). O frontend descobre sozinho o endereço do backend - na web
+      pelo host da página, na app nativa pelo host do servidor do Expo -
+      com EXPO_PUBLIC_API_URL para forçar outro
     - lista de conversas mostra todos os utilizadores do servidor; a
       conversa só é criada na BD quando se abre pela primeira vez
       (get_or_create, não é pré-criada no registo)
@@ -96,9 +112,10 @@ estado_de_implementacao:
     - cifra só em 1:1 e com arestas conhecidas - inícios de sessão
       simultâneos podem perder as mensagens que se cruzam (sem arquivo de
       sessões), sem rotação de SPK, sem reposição automática de OPKs
-    - sem federação - identificador é só o username local, sem
-      user@servidor, .well-known, assinatura de pedidos nem
-      federated_servers (é o trabalho da 0.2.0, ver proxima_versao)
+    - sem federação - já há identificador user@domínio, mas ainda não há
+      .well-known, assinatura de pedidos nem federated_servers, e os dois
+      servidores de dev não falam um com o outro (é o resto da 0.2.0, ver
+      proxima_versao)
     - sem alcunha nem deteção de ambiguidade - mostra-se sempre o nome de
       exibição
     - registo aberto, sem código de convite nem aprovação de admin
@@ -156,9 +173,10 @@ proxima_versao:
       estado_de_implementacao.construido)
     F1: protocolo escrito na secção federacao deste yaml
     F2: >
-      identificador user@domínio (coluna domain em users) + ambiente de dev
-      com dois servidores (duas BDs, portas 8001/8002, frontend com
-      EXPO_PUBLIC_API_URL)
+      feito - identificador user@domínio (coluna domain em users, NULL nas
+      contas locais) + ambiente de dev com dois servidores (duas BDs, portas
+      8001/8002, clientes web em 8091/8092) - detalhe em
+      estado_de_implementacao.construido
     F3: >
       identidade do servidor - chave de assinatura, .well-known, assinatura
       e verificação de pedidos, tabela federated_servers (TOFU)
@@ -463,7 +481,10 @@ federacao:
     existe.
   identificador: >
     user@domínio (ex. alice@casa.pt, ou localhost:8001 em dev). O domínio é
-    o SERVER_NAME do servidor onde a conta vive.
+    o SERVER_NAME do servidor onde a conta vive. Na BD, users.domain fica
+    NULL nas contas locais e só é preenchido nos utilizadores-sombra; o
+    código para formatar e ler identificadores está em
+    backend/app/services/identifiers.py.
   descoberta:
     endpoint: GET /.well-known/whattspoppin/server
     resposta: '{server_name, versions: ["1"], verify_keys: {"ed25519:1": <b64>}}'
@@ -531,13 +552,14 @@ federacao:
     (reenvio depois de um timeout) já são descartados pelo cliente por
     (sender_device_id, client_message_id).
   dependencias: >
-    cryptography (Ed25519 do servidor) e httpx (cliente HTTP entre
-    servidores, passa de dev para runtime). Sem Redis nem Celery - a fila é
+    cryptography (Ed25519 do servidor) e httpx2 (cliente HTTP entre
+    servidores, passa de dev para runtime - é o sucessor do httpx e o que o
+    TestClient do Starlette já usa, por isso fica uma só biblioteca). Sem Redis nem Celery - a fila é
     uma tabela no Postgres e o worker uma tarefa asyncio no lifespan do FastAPI.
   testes: >
     O Peewee usa uma BD global, por isso não se sobem dois servidores no
     mesmo processo de teste - pedidos de entrada testam-se com TestClient e
-    uma chave de teste, os de saída e o worker com httpx.MockTransport. O
+    uma chave de teste, os de saída e o worker com o MockTransport do httpx2. O
     teste ponta-a-ponta é manual, com dois servidores (8001/8002).
 
 papeis_e_administracao:

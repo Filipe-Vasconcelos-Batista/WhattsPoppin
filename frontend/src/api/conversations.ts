@@ -14,7 +14,6 @@ export async function getOrCreateConversation(otherUserId: string): Promise<stri
   return data.conversation_id;
 }
 
-
 export async function fetchRecipientDevices(conversationId: string): Promise<string[]> {
   const response = await authFetch(`/conversations/${conversationId}/devices`);
 

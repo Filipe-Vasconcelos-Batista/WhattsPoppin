@@ -31,7 +31,11 @@ async def update_display_name_endpoint(
     await connection_manager.broadcast(
         {
             "type": "user_updated",
-            "user": {"user_id": str(identity.user_id), "display_name": display_name},
+            "user": {
+                "user_id": str(identity.user_id),
+                "display_name": display_name,
+                "identifier": identity.identifier,
+            },
         },
         exclude=identity.device_id,
     )

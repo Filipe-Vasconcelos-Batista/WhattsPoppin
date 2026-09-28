@@ -57,6 +57,9 @@ export default function ProfileScreen() {
             color={colorForId(identity.userId)}
             size={96}
           />
+          <Text style={styles.identifier} selectable>
+            {identity.identifier}
+          </Text>
         </View>
 
         <AuthTextField
@@ -107,7 +110,12 @@ const styles = StyleSheet.create({
   },
   avatar: {
     alignItems: 'center',
+    gap: 12,
     marginBottom: 8,
+  },
+  identifier: {
+    color: colors.textSecondary,
+    fontSize: 14,
   },
   error: {
     color: '#F87171',

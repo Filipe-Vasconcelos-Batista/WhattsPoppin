@@ -47,6 +47,22 @@ implementation_status:
       work for its participants (anyone else gets 404 and doesn't learn the
       conversation exists); prekey bundles require a session, so nobody
       outside can drain the OPKs
+    - >
+      user@domain identifier (F2 of 0.2.0) - each server has its own
+      SERVER_NAME and each account an identifier (e.g. alice@localhost:8001),
+      returned on login/session and shown in "My profile". users.domain is
+      NULL for local accounts (only F4's shadow users fill it in), so
+      changing SERVER_NAME doesn't rewrite accounts; the username is unique
+      per domain, with two partial indexes. Usernames are lowercase (sign-up
+      and login convert them), 3-32 characters from a-z 0-9 . _ -
+    - >
+      two servers in dev - backend/dev/run-server.sh a|b starts server A
+      (localhost:8001, dev DB) or B (localhost:8002, whattspoppin_b DB), with
+      migrations and --host 0.0.0.0; npm run web:a|web:b starts each one's
+      web client (ports 8091/8092, separate localStorage). The frontend works
+      out the backend address by itself - on the web from the page's host,
+      in the native app from the Expo dev server's host - with
+      EXPO_PUBLIC_API_URL to force another one
     - the conversation list shows every user on the server; a conversation
       is only created in the DB the first time it is opened (get_or_create,
       not pre-created on sign-up)
@@ -103,9 +119,10 @@ implementation_status:
     - encryption only in 1:1 and with known rough edges - simultaneous
       session starts may lose the messages that cross (no session archive),
       no SPK rotation, no automatic OPK replenishment
-    - no federation - the identifier is just the local username, no
-      user@server, .well-known, request signing or federated_servers (that
-      is the 0.2.0 work, see next_version)
+    - no federation - there is a user@domain identifier now, but no
+      .well-known, request signing or federated_servers yet, and the two dev
+      servers don't talk to each other (that is the rest of 0.2.0, see
+      next_version)
     - no nicknames or ambiguity detection - the display name is always shown
     - open registration, no invite code or admin approval
     - >
@@ -162,9 +179,10 @@ next_version:
       (details in implementation_status.built)
     F1: protocol written in the federation section of this yaml
     F2: >
-      user@domain identifier (domain column in users) + dev environment
-      with two servers (two DBs, ports 8001/8002, frontend with
-      EXPO_PUBLIC_API_URL)
+      done - user@domain identifier (domain column in users, NULL for local
+      accounts) + dev environment with two servers (two DBs, ports
+      8001/8002, web clients on 8091/8092) - details in
+      implementation_status.built
     F3: >
       server identity - signing key, .well-known, request signing and
       verification, federated_servers table (TOFU)
@@ -469,7 +487,10 @@ federation:
     we already have.
   identifier: >
     user@domain (e.g. alice@casa.pt, or localhost:8001 in dev). The domain
-    is the SERVER_NAME of the server where the account lives.
+    is the SERVER_NAME of the server where the account lives. In the DB,
+    users.domain is NULL for local accounts and only filled in for shadow
+    users; the code to format and parse identifiers is in
+    backend/app/services/identifiers.py.
   discovery:
     endpoint: GET /.well-known/whattspoppin/server
     response: '{server_name, versions: ["1"], verify_keys: {"ed25519:1": <b64>}}'
@@ -537,13 +558,14 @@ federation:
     after a timeout) are already dropped by the client by
     (sender_device_id, client_message_id).
   dependencies: >
-    cryptography (the server's Ed25519) and httpx (HTTP client between
-    servers, moves from dev to runtime). No Redis or Celery - the queue is a
+    cryptography (the server's Ed25519) and httpx2 (HTTP client between
+    servers, moves from dev to runtime - it is httpx's successor and what
+    Starlette's TestClient already uses, so there is a single library). No Redis or Celery - the queue is a
     Postgres table and the worker an asyncio task in FastAPI's lifespan.
   tests: >
     Peewee uses a global DB, so two servers are not started in the same test
     process - incoming requests are tested with TestClient and a test key,
-    outgoing ones and the worker with httpx.MockTransport. The end-to-end
+    outgoing ones and the worker with httpx2's MockTransport. The end-to-end
     test is manual, with two servers (8001/8002).
 
 roles_and_administration:

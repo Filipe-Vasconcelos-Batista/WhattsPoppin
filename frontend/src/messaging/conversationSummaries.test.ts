@@ -4,9 +4,9 @@ import { buildConversationSummaries, initialsFor, totalUnread } from './conversa
 import type { ChatMessage } from '../types/chat';
 
 const NOW = new Date(2026, 8, 24, 15, 0);
-const ANA = { user_id: 'ana', display_name: 'Ana Silva' };
-const RUI = { user_id: 'rui', display_name: 'Rui' };
-const EVA = { user_id: 'eva', display_name: 'Eva' };
+const ANA = { user_id: 'ana', display_name: 'Ana Silva', identifier: 'ana@test.local' };
+const RUI = { user_id: 'rui', display_name: 'Rui', identifier: 'rui@test.local' };
+const EVA = { user_id: 'eva', display_name: 'Eva', identifier: 'eva@test.local' };
 const CONVERSATION_USERS = { 'c-ana': 'ana', 'c-rui': 'rui' };
 
 function text(

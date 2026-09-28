@@ -4,6 +4,7 @@ import { bearer } from './session';
 export type UserSummary = {
   user_id: string;
   display_name: string;
+  identifier: string;
   conversation_id?: string | null;
 };
 
@@ -12,6 +13,7 @@ export type AuthResponse = {
   user_id: string;
   device_id: string;
   display_name: string;
+  identifier: string;
   other_users: UserSummary[];
 };
 

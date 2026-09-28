@@ -25,6 +25,7 @@ class LoginRequest(BaseModel):
 class UserSummaryResponse(BaseModel):
     user_id: uuid.UUID
     display_name: str
+    identifier: str
     conversation_id: uuid.UUID | None = None
 
 
@@ -33,6 +34,7 @@ class AuthResponse(BaseModel):
     user_id: uuid.UUID
     device_id: uuid.UUID
     display_name: str
+    identifier: str
     other_users: list[UserSummaryResponse]
 
 
@@ -45,7 +47,11 @@ async def _finish(identity: Identity) -> AuthResponse:
         await connection_manager.broadcast(
             {
                 "type": "user_registered",
-                "user": {"user_id": str(identity.user_id), "display_name": identity.display_name},
+                "user": {
+                    "user_id": str(identity.user_id),
+                    "display_name": identity.display_name,
+                    "identifier": identity.identifier,
+                },
             },
             exclude=identity.device_id,
         )
@@ -55,10 +61,12 @@ async def _finish(identity: Identity) -> AuthResponse:
         user_id=identity.user_id,
         device_id=identity.device_id,
         display_name=identity.display_name,
+        identifier=identity.identifier,
         other_users=[
             UserSummaryResponse(
                 user_id=user.user_id,
                 display_name=user.display_name,
+                identifier=user.identifier,
                 conversation_id=user.conversation_id,
             )
             for user in other_users
