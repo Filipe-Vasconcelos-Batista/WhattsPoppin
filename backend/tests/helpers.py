@@ -3,10 +3,12 @@
 import base64
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from fastapi.testclient import TestClient
+from starlette.testclient import WebSocketTestSession
 
 from app.main import app
 
@@ -33,11 +35,23 @@ def login_new_device(username: str) -> dict[str, Any]:
     return session
 
 
+def auth_headers(session: dict[str, Any]) -> dict[str, str]:
+    return {"Authorization": f"Bearer {session['token']}"}
+
+
+@contextmanager
+def connect(ws_client: TestClient, session: dict[str, Any]) -> Iterator[WebSocketTestSession]:
+    with ws_client.websocket_connect("/ws") as websocket:
+        websocket.send_json({"type": "auth", "token": session["token"]})
+        assert websocket.receive_json() == {"type": "auth_ok"}
+        yield websocket
+
+
 def publish_keys(session: dict[str, Any]) -> None:
     response = client.post(
         f"/devices/{session['device_id']}/keys",
+        headers=auth_headers(session),
         json={
-            "client_token": session["token"],
             "identity_key": b64(b"i" * 32),
             "signed_prekey": b64(b"s" * 32),
             "signed_prekey_signature": b64(b"g" * 64),
@@ -50,7 +64,7 @@ def publish_keys(session: dict[str, Any]) -> None:
 
 def conversation(a: dict[str, Any], b: dict[str, Any]) -> str:
     response = client.post(
-        "/conversations/with", json={"user_id": a["user_id"], "other_user_id": b["user_id"]}
+        "/conversations/with", headers=auth_headers(a), json={"other_user_id": b["user_id"]}
     )
     assert response.status_code == 200
     conversation_id: str = response.json()["conversation_id"]

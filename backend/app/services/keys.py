@@ -9,13 +9,8 @@ class DeviceNotFoundError(Exception):
     pass
 
 
-class DeviceTokenMismatchError(Exception):
-    pass
-
-
 def publish_keys(
     device_id: uuid.UUID,
-    client_token: str,
     identity_key: bytes,
     signed_prekey: bytes,
     signed_prekey_signature: bytes,
@@ -25,8 +20,6 @@ def publish_keys(
     device = Device.get_or_none(Device.id == device_id, Device.is_active == True)  # noqa: E712
     if device is None:
         raise DeviceNotFoundError
-    if device.client_token != client_token:
-        raise DeviceTokenMismatchError
 
     with db.atomic():
         device.identity_key = identity_key

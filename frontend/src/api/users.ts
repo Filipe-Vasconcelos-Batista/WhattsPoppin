@@ -1,10 +1,9 @@
-import { API_URL } from './config';
+import { authFetch } from './session';
 
-export async function updateDisplayName(token: string, displayName: string): Promise<string> {
-  const response = await fetch(`${API_URL}/users/me/display_name`, {
+export async function updateDisplayName(displayName: string): Promise<string> {
+  const response = await authFetch('/users/me/display_name', {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token, display_name: displayName }),
+    body: JSON.stringify({ display_name: displayName }),
   });
 
   if (!response.ok) {

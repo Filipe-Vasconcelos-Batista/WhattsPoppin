@@ -4,11 +4,7 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 from app.services import outbox
-from tests.helpers import conversation, envelope, outgoing, register, wait_until
-
-
-def _ws(session: dict[str, Any]) -> str:
-    return f"/ws?device_id={session['device_id']}"
+from tests.helpers import connect, conversation, envelope, outgoing, register, wait_until
 
 
 def _typing(conversation_id: str, typing: bool = True) -> dict[str, Any]:
@@ -25,8 +21,8 @@ def test_typing_reaches_connected_recipient(ws_client: TestClient) -> None:
     conversation_id = conversation(alice, bob)
 
     with (
-        ws_client.websocket_connect(_ws(alice)) as alice_ws,
-        ws_client.websocket_connect(_ws(bob)) as bob_ws,
+        connect(ws_client, alice) as alice_ws,
+        connect(ws_client, bob) as bob_ws,
     ):
         alice_ws.send_json(_typing(conversation_id))
         started = bob_ws.receive_json()
@@ -48,7 +44,7 @@ def test_typing_is_not_queued_for_offline_recipient(ws_client: TestClient) -> No
     bob = register()
     conversation_id = conversation(alice, bob)
 
-    with ws_client.websocket_connect(_ws(alice)) as alice_ws:
+    with connect(ws_client, alice) as alice_ws:
         alice_ws.send_json(_typing(conversation_id))
         # Uma mensagem a seguir: quando ela estiver na fila, o typing (enviado
         # antes, no mesmo socket) já foi processado.
@@ -66,8 +62,8 @@ def test_typing_only_reaches_the_conversation_participants(ws_client: TestClient
     alice_outsider = conversation(alice, outsider)
 
     with (
-        ws_client.websocket_connect(_ws(alice)) as alice_ws,
-        ws_client.websocket_connect(_ws(outsider)) as outsider_ws,
+        connect(ws_client, alice) as alice_ws,
+        connect(ws_client, outsider) as outsider_ws,
     ):
         alice_ws.send_json(_typing(alice_bob))
         alice_ws.send_json(_typing(alice_outsider))

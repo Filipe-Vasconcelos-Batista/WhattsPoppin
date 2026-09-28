@@ -189,7 +189,7 @@ export function encryptForConversation(
   text: string,
 ): Promise<WireEnvelope[]> {
   return runSerially(async () => {
-    const deviceIds = await fetchRecipientDevices(conversationId, myDeviceId);
+    const deviceIds = await fetchRecipientDevices(conversationId);
     const envelopes: WireEnvelope[] = [];
     for (const deviceId of deviceIds) {
       try {

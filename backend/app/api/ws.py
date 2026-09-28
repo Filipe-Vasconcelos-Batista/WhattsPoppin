@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from collections import defaultdict
 from typing import Any, Literal
@@ -7,6 +8,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.db.sync import run_sync
 from app.services import outbox
+from app.services.auth import Identity, resume_session
 from app.services.connections import connection_manager
 from app.services.messaging import find_recipient_device_ids, user_id_of_device
 
@@ -15,6 +17,13 @@ router = APIRouter()
 MAX_CIPHERTEXT_LENGTH = 64 * 1024  # base64
 MAX_ENVELOPES = 50
 MAX_IDS_PER_REQUEST = 500
+AUTH_TIMEOUT_SECONDS = 5.0
+CLOSE_UNAUTHORIZED = 4401
+
+
+class AuthIn(BaseModel):
+    type: Literal["auth"]
+    token: str = Field(max_length=128)
 
 
 # O servidor nunca decifra nada - estes modelos só validam a forma do que
@@ -181,10 +190,29 @@ async def _handle_typing(sender_device_id: uuid.UUID, typing: TypingIn) -> None:
         )
 
 
+async def _authenticate(websocket: WebSocket) -> Identity | None:
+    try:
+        data = await asyncio.wait_for(websocket.receive_json(), AUTH_TIMEOUT_SECONDS)
+        auth = AuthIn.model_validate(data)
+    except (TimeoutError, ValidationError, ValueError):
+        return None
+    return await run_sync(resume_session, auth.token)
+
+
 @router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, device_id: uuid.UUID) -> None:
+async def websocket_endpoint(websocket: WebSocket) -> None:
     await websocket.accept()
+    try:
+        identity = await _authenticate(websocket)
+    except WebSocketDisconnect:
+        return
+    if identity is None:
+        await websocket.close(code=CLOSE_UNAUTHORIZED)
+        return
+
+    device_id = identity.device_id
     connection_manager.register(device_id, websocket)
+    await websocket.send_json({"type": "auth_ok"})
 
     try:
         await run_sync(outbox.purge_expired)

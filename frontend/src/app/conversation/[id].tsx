@@ -24,7 +24,7 @@ export default function ConversationScreen() {
     if (!identity.userId) return;
     let cancelled = false;
 
-    getOrCreateConversation(identity.userId, otherUserId).then((id) => {
+    getOrCreateConversation(otherUserId).then((id) => {
       rememberConversation(otherUserId, id);
       if (!cancelled) setConversationId(id);
     });

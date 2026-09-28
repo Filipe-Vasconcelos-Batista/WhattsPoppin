@@ -32,6 +32,16 @@ estado_de_implementacao:
       nos dois lados
     - registo e login reais (username + password, hash com bcrypt) - sessão
       guardada como token no dispositivo, retomada automaticamente
+    - autenticação por sessão em tudo (F0 da 0.2.0) - o REST exige
+      Authorization: Bearer <token>, o /ws exige {type: auth, token} como
+      primeira mensagem (sem ela em 5 s, ou com token inválido, fecha com
+      4401) - o token nunca vai na URL, para não ficar em logs. O user e o
+      device saem sempre da sessão, nunca de ids mandados pelo cliente. Na BD
+      só fica o SHA-256 do token (token_hash), e devices inativos não
+      retomam sessão. Mensagens, recibos, "a escrever" e a lista de devices
+      de uma conversa só funcionam para quem é participante dela (quem não é
+      recebe 404, não fica a saber que a conversa existe); o prekey bundle
+      só se pede com sessão, para ninguém de fora esgotar as OPKs
     - lista de conversas mostra todos os utilizadores do servidor; a
       conversa só é criada na BD quando se abre pela primeira vez
       (get_or_create, não é pré-criada no registo)
@@ -85,11 +95,6 @@ estado_de_implementacao:
     - sem federação - identificador é só o username local, sem
       user@servidor, .well-known, assinatura de pedidos nem
       federated_servers (é o trabalho da 0.2.0, ver proxima_versao)
-    - autenticação local fraca - o /ws aceita qualquer device_id sem token,
-      e /conversations/with, /conversations/{id}/devices e
-      /devices/{id}/prekey-bundle confiam no user_id/device_id que o cliente
-      manda. Resolve-se na fase F0 da 0.2.0, antes da federação, porque os
-      outros servidores vão acreditar no que o nosso diz sobre quem enviou
     - sem alcunha nem deteção de ambiguidade - mostra-se sempre o nome de
       exibição
     - registo aberto, sem código de convite nem aprovação de admin
@@ -129,8 +134,9 @@ proxima_versao:
     servidores faz parte da própria federação e não se adia.
   fases:
     F0: >
-      autenticação local a sério - /ws e endpoints REST exigem o token da
-      sessão, o user/device sai dele e não do cliente
+      feito - autenticação local a sério - /ws e endpoints REST exigem o
+      token da sessão, o user/device sai dele e não do cliente (detalhe em
+      estado_de_implementacao.construido)
     F1: protocolo escrito na secção federacao deste yaml
     F2: >
       identificador user@domínio (coluna domain em users) + ambiente de dev

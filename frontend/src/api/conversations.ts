@@ -1,13 +1,9 @@
-import { API_URL } from './config';
+import { authFetch } from './session';
 
-export async function getOrCreateConversation(
-  userId: string,
-  otherUserId: string,
-): Promise<string> {
-  const response = await fetch(`${API_URL}/conversations/with`, {
+export async function getOrCreateConversation(otherUserId: string): Promise<string> {
+  const response = await authFetch('/conversations/with', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: userId, other_user_id: otherUserId }),
+    body: JSON.stringify({ other_user_id: otherUserId }),
   });
 
   if (!response.ok) {
@@ -18,15 +14,9 @@ export async function getOrCreateConversation(
   return data.conversation_id;
 }
 
-// Dispositivos do(s) outro(s) participante(s) para os quais é preciso cifrar -
-// só os que já publicaram chaves.
-export async function fetchRecipientDevices(
-  conversationId: string,
-  myDeviceId: string,
-): Promise<string[]> {
-  const response = await fetch(
-    `${API_URL}/conversations/${conversationId}/devices?device_id=${encodeURIComponent(myDeviceId)}`,
-  );
+
+export async function fetchRecipientDevices(conversationId: string): Promise<string[]> {
+  const response = await authFetch(`/conversations/${conversationId}/devices`);
 
   if (!response.ok) {
     throw new Error(`Falha ao obter os dispositivos da conversa (${response.status})`);

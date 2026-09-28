@@ -2,13 +2,14 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
-from tests.helpers import PASSWORD, client, register
+from tests.helpers import PASSWORD, auth_headers, client, connect, register
 
 
 def _update(session: dict[str, Any], display_name: str, http: TestClient = client) -> Any:
     return http.patch(
         "/users/me/display_name",
-        json={"token": session["token"], "display_name": display_name},
+        headers=auth_headers(session),
+        json={"display_name": display_name},
     )
 
 
@@ -22,7 +23,7 @@ def test_update_display_name_is_trimmed_and_persisted() -> None:
     assert response.json() == {"display_name": "Alice Silva"}
     login = client.post("/auth/login", json={"username": alice["username"], "password": PASSWORD})
     assert login.json()["display_name"] == "Alice Silva"
-    session = client.post("/auth/session", json={"token": bob["token"]}).json()
+    session = client.post("/auth/session", headers=auth_headers(bob)).json()
     alice_seen_by_bob = next(
         user for user in session["other_users"] if user["user_id"] == alice["user_id"]
     )
@@ -47,7 +48,7 @@ def test_other_connected_devices_are_told_about_the_new_name(ws_client: TestClie
     alice = register()
     bob = register()
 
-    with ws_client.websocket_connect(f"/ws?device_id={bob['device_id']}") as bob_ws:
+    with connect(ws_client, bob) as bob_ws:
         assert _update(alice, "Alice Nova", http=ws_client).status_code == 200
         event = bob_ws.receive_json()
 

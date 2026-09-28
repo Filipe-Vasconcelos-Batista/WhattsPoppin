@@ -1,10 +1,10 @@
 from typing import Any
 
-from tests.helpers import client, conversation, register
+from tests.helpers import auth_headers, client, conversation, register
 
 
 def _other_user(session: dict[str, Any], user_id: str) -> dict[str, Any]:
-    response = client.post("/auth/session", json={"token": session["token"]})
+    response = client.post("/auth/session", headers=auth_headers(session))
     assert response.status_code == 200
     other_user: dict[str, Any] = next(
         user for user in response.json()["other_users"] if user["user_id"] == user_id

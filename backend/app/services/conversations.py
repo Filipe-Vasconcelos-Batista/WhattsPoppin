@@ -1,6 +1,21 @@
 import uuid
 
-from app.models import Conversation, ConversationParticipant
+from app.models import Conversation, ConversationParticipant, User
+
+
+class UserNotFoundError(Exception):
+    pass
+
+
+def is_participant(conversation_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+    return bool(
+        ConversationParticipant.select()
+        .where(
+            ConversationParticipant.conversation == conversation_id,
+            ConversationParticipant.user == user_id,
+        )
+        .exists()
+    )
 
 
 def find_conversation(user_a_id: uuid.UUID, user_b_id: uuid.UUID) -> uuid.UUID | None:
@@ -23,8 +38,9 @@ def find_conversation(user_a_id: uuid.UUID, user_b_id: uuid.UUID) -> uuid.UUID |
 
 
 def get_or_create_conversation(user_a_id: uuid.UUID, user_b_id: uuid.UUID) -> uuid.UUID:
-    """1:1 só - a conversa nem existe na BD até alguém tocar no contacto e
-    abrir a conversa pela primeira vez."""
+    if User.get_or_none(User.id == user_b_id) is None:
+        raise UserNotFoundError
+
     existing = find_conversation(user_a_id, user_b_id)
     if existing is not None:
         return existing

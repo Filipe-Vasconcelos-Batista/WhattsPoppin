@@ -1,4 +1,5 @@
 import { API_URL } from './config';
+import { bearer } from './session';
 
 export type UserSummary = {
   user_id: string;
@@ -40,8 +41,7 @@ export function loginUser(username: string, password: string): Promise<AuthRespo
 export async function resumeSession(token: string): Promise<AuthResponse | null> {
   const response = await fetch(`${API_URL}/auth/session`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token }),
+    headers: bearer(token),
   });
 
   if (!response.ok) return null;

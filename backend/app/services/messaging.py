@@ -1,6 +1,7 @@
 import uuid
 
 from app.models import ConversationParticipant, Device
+from app.services.conversations import is_participant
 
 
 def user_id_of_device(device_id: uuid.UUID) -> uuid.UUID:
@@ -14,6 +15,9 @@ def find_recipient_device_ids(
     with_keys_only: bool = False,
 ) -> list[uuid.UUID]:
     sender_device = Device.get_by_id(sender_device_id)
+
+    if not is_participant(conversation_id, sender_device.user.id):
+        return []
 
     participants = ConversationParticipant.select().where(
         ConversationParticipant.conversation == conversation_id,

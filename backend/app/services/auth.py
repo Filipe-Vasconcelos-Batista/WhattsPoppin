@@ -1,3 +1,4 @@
+import hashlib
 import secrets
 import uuid
 from dataclasses import dataclass
@@ -30,9 +31,13 @@ def _verify_password(password: str, password_hash: str) -> bool:
     return bcrypt.checkpw(password.encode(), password_hash.encode())
 
 
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
 def _create_device_for(user: User) -> tuple[str, Device]:
     token = secrets.token_hex(16)
-    device = Device.create(user=user, client_token=token)
+    device = Device.create(user=user, token_hash=_hash_token(token))
     return token, device
 
 
@@ -73,7 +78,10 @@ def login(username: str, password: str) -> Identity:
 
 
 def resume_session(token: str) -> Identity | None:
-    device = Device.get_or_none(Device.client_token == token)
+    device = Device.get_or_none(
+        Device.token_hash == _hash_token(token),
+        Device.is_active == True,  # noqa: E712
+    )
     if device is None:
         return None
 

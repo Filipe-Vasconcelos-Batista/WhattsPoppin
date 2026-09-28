@@ -3,8 +3,9 @@ import uuid
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from app.api.deps import OptionalIdentity
 from app.db.sync import run_sync
-from app.services.auth import AuthError, Identity, login, register, resume_session
+from app.services.auth import AuthError, Identity, login, register
 from app.services.connections import connection_manager
 from app.services.users import list_other_users
 
@@ -19,10 +20,6 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
-
-
-class SessionRequest(BaseModel):
-    token: str
 
 
 class UserSummaryResponse(BaseModel):
@@ -88,8 +85,7 @@ async def login_endpoint(request: LoginRequest) -> AuthResponse:
 
 
 @router.post("/session", response_model=AuthResponse | None)
-async def session_endpoint(request: SessionRequest) -> AuthResponse | None:
-    identity = await run_sync(resume_session, request.token)
+async def session_endpoint(identity: OptionalIdentity) -> AuthResponse | None:
     if identity is None:
         return None
     return await _finish(identity)

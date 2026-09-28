@@ -5,11 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.models import PendingMessage
 from app.services import outbox
-from tests.helpers import conversation, envelope, outgoing, register, wait_until
-
-
-def _ws(session: dict[str, Any]) -> str:
-    return f"/ws?device_id={session['device_id']}"
+from tests.helpers import connect, conversation, envelope, outgoing, register, wait_until
 
 
 def _pending(session: dict[str, Any]) -> list[dict[str, Any]]:
@@ -22,7 +18,7 @@ def test_sender_gets_sent_with_its_client_message_id(ws_client: TestClient) -> N
     conversation_id = conversation(alice, bob)
     client_message_id = str(uuid.uuid4())
 
-    with ws_client.websocket_connect(_ws(alice)) as alice_ws:
+    with connect(ws_client, alice) as alice_ws:
         alice_ws.send_json(
             outgoing(
                 conversation_id,
@@ -43,8 +39,8 @@ def test_recipient_ack_sends_delivered_receipt_to_sender(ws_client: TestClient) 
     client_message_id = str(uuid.uuid4())
 
     with (
-        ws_client.websocket_connect(_ws(alice)) as alice_ws,
-        ws_client.websocket_connect(_ws(bob)) as bob_ws,
+        connect(ws_client, alice) as alice_ws,
+        connect(ws_client, bob) as bob_ws,
     ):
         alice_ws.send_json(
             outgoing(
@@ -74,7 +70,7 @@ def test_delivered_receipt_waits_in_queue_while_sender_is_offline(ws_client: Tes
     conversation_id = conversation(alice, bob)
     client_message_id = str(uuid.uuid4())
 
-    with ws_client.websocket_connect(_ws(alice)) as alice_ws:
+    with connect(ws_client, alice) as alice_ws:
         alice_ws.send_json(
             outgoing(
                 conversation_id,
@@ -84,12 +80,12 @@ def test_delivered_receipt_waits_in_queue_while_sender_is_offline(ws_client: Tes
         )
         assert alice_ws.receive_json()["type"] == "sent"
 
-    with ws_client.websocket_connect(_ws(bob)) as bob_ws:
+    with connect(ws_client, bob) as bob_ws:
         message = bob_ws.receive_json()
         bob_ws.send_json({"type": "ack", "message_ids": [message["message_id"]]})
         wait_until(lambda: len(_pending(alice)) == 1)
 
-    with ws_client.websocket_connect(_ws(alice)) as alice_ws:
+    with connect(ws_client, alice) as alice_ws:
         receipt = alice_ws.receive_json()
 
     assert receipt["status"] == "delivered"
@@ -111,7 +107,7 @@ def test_acking_a_receipt_does_not_generate_another_receipt(ws_client: TestClien
     )
     rows_before = PendingMessage.select().count()
 
-    with ws_client.websocket_connect(_ws(alice)) as alice_ws:
+    with connect(ws_client, alice) as alice_ws:
         receipt = alice_ws.receive_json()
         alice_ws.send_json({"type": "ack", "message_ids": [receipt["message_id"]]})
         wait_until(lambda: _pending(alice) == [])
@@ -142,8 +138,8 @@ def test_acking_an_old_row_without_client_message_id_does_not_break(
     client_message_id = str(uuid.uuid4())
 
     with (
-        ws_client.websocket_connect(_ws(alice)) as alice_ws,
-        ws_client.websocket_connect(_ws(bob)) as bob_ws,
+        connect(ws_client, alice) as alice_ws,
+        connect(ws_client, bob) as bob_ws,
     ):
         old = bob_ws.receive_json()
         bob_ws.send_json({"type": "ack", "message_ids": [old["message_id"]]})
@@ -173,8 +169,8 @@ def test_read_receipt_reaches_the_sender_device(ws_client: TestClient) -> None:
     client_message_id = str(uuid.uuid4())
 
     with (
-        ws_client.websocket_connect(_ws(alice)) as alice_ws,
-        ws_client.websocket_connect(_ws(bob)) as bob_ws,
+        connect(ws_client, alice) as alice_ws,
+        connect(ws_client, bob) as bob_ws,
     ):
         bob_ws.send_json(
             {
@@ -201,8 +197,8 @@ def test_read_receipt_for_device_outside_the_conversation_is_dropped(
     conversation_id = conversation(alice, bob)
 
     with (
-        ws_client.websocket_connect(_ws(alice)) as alice_ws,
-        ws_client.websocket_connect(_ws(bob)) as bob_ws,
+        connect(ws_client, alice) as alice_ws,
+        connect(ws_client, bob) as bob_ws,
     ):
         # Primeiro um recibo para quem não está na conversa (descartado), a
         # seguir um legítimo - quando este chega, o anterior já foi tratado.
@@ -236,8 +232,8 @@ def test_message_without_client_message_id_is_ignored(ws_client: TestClient) -> 
     client_message_id = str(uuid.uuid4())
 
     with (
-        ws_client.websocket_connect(_ws(alice)) as alice_ws,
-        ws_client.websocket_connect(_ws(bob)) as bob_ws,
+        connect(ws_client, alice) as alice_ws,
+        connect(ws_client, bob) as bob_ws,
     ):
         alice_ws.send_json(
             {"conversation_id": conversation_id, "envelopes": [envelope(bob["device_id"], 9)]}

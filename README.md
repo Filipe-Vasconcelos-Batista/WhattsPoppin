@@ -103,6 +103,9 @@ aparecem um ao outro na lista de conversas.
 
 - Registo e login reais (username + password), com sessão retomada
   automaticamente a partir de um token guardado no dispositivo.
+- Todos os pedidos e o WebSocket exigem esse token. O servidor tira dele
+  quem és e só guarda o hash, e só quem está numa conversa consegue enviar
+  para ela ou ver os dispositivos dela.
 - A lista de conversas mostra todos os outros utilizadores já registados
   no servidor, mesmo sem histórico nenhum entre vocês.
 - Tocar num utilizador cria a conversa (se ainda não existir) e abre o chat.
@@ -170,10 +173,6 @@ aparecem um ao outro na lista de conversas.
   relógio.
 - **Sem alcunhas nem deteção de ambiguidade de nomes.**
 - **Um só dispositivo por utilizador**, sem multi-dispositivo a sério.
-- **Autenticação local fraca.** O WebSocket aceita qualquer `device_id`
-  sem token, e alguns endpoints confiam no utilizador/dispositivo que o
-  cliente indica. É a primeira coisa a corrigir na 0.2.0, antes da
-  federação.
 - **Sem federação** (em curso, ver acima): só conversas dentro do mesmo
   servidor.
 - **Registo aberto**, sem código de convite nem aprovação de admin.

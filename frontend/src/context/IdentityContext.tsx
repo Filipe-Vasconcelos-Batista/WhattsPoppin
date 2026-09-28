@@ -12,6 +12,7 @@ import {
 } from 'react';
 
 import { loginUser, registerUser, resumeSession, type UserSummary } from '../api/auth';
+import { setSessionToken } from '../api/session';
 import { updateDisplayName as updateDisplayNameRequest } from '../api/users';
 import { generateAndPublishDeviceKeys } from '../crypto/keys';
 import {
@@ -159,6 +160,13 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  function clearSession() {
+    setSessionToken(null);
+    setToken(null);
+    setAuthenticated(false);
+    AsyncStorage.removeItem(STORAGE_KEY);
+  }
+
   async function applySession(
     token: string,
     newUserId: string,
@@ -166,6 +174,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     newDisplayName: string,
     newOtherUsers: UserSummary[],
   ) {
+    setSessionToken(token);
     setToken(token);
     setUserId(newUserId);
     setDeviceId(newDeviceId);
@@ -188,14 +197,14 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
       session.display_name,
       session.other_users,
     );
-    generateAndPublishDeviceKeys(session.device_id, session.token).catch((error) => {
+    generateAndPublishDeviceKeys(session.device_id).catch((error) => {
       console.warn('Falha ao gerar/publicar chaves E2E do dispositivo:', error);
     });
   }
 
   async function updateDisplayName(newDisplayName: string) {
     if (!token) throw new Error('Sem sessão');
-    setDisplayName(await updateDisplayNameRequest(token, newDisplayName));
+    setDisplayName(await updateDisplayNameRequest(newDisplayName));
   }
 
   async function register(username: string, password: string) {
@@ -207,7 +216,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
       session.display_name,
       session.other_users,
     );
-    generateAndPublishDeviceKeys(session.device_id, session.token).catch((error) => {
+    generateAndPublishDeviceKeys(session.device_id).catch((error) => {
       console.warn('Falha ao gerar/publicar chaves E2E do dispositivo:', error);
     });
   }
@@ -343,8 +352,9 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     [userId, deviceId, outgoingQueue, updateMyStatus, rememberConversation, setConversationTyping],
   );
 
-  const { send } = useSocketConnection(deviceId, handlePayload, () => {
-    outgoingQueue?.onSocketOpen();
+  const { send } = useSocketConnection(token, handlePayload, {
+    onOpen: () => outgoingQueue?.onSocketOpen(),
+    onUnauthorized: clearSession,
   });
 
   // Layout effect, não effect normal: os efeitos dos filhos (ex.: o ecrã da

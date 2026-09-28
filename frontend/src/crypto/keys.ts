@@ -116,18 +116,10 @@ export async function consumeOneTimePrekey(
   return base64ToBytes(match.privateKey);
 }
 
-// Gera um lote novo, guarda as privadas localmente (merge) e publica as
-// públicas. Chamado uma vez por register()/login() (cada um cria sempre
-// um Device novo - ver nota em IdentityContext.tsx), nunca em
-// resumeSession() - mas seguro para chamar de novo no futuro (reposição
-// de OPKs) sem perder chaves privadas ainda não consumidas.
-export async function generateAndPublishDeviceKeys(
-  deviceId: string,
-  clientToken: string,
-): Promise<void> {
+export async function generateAndPublishDeviceKeys(deviceId: string): Promise<void> {
   const keys = generateDeviceKeys();
   await storeDeviceKeys(deviceId, keys);
-  await publishDeviceKeys(deviceId, clientToken, {
+  await publishDeviceKeys(deviceId, {
     identityKey: bytesToBase64(keys.identityKey.publicKey),
     signedPrekey: bytesToBase64(keys.signedPrekey.publicKey),
     signedPrekeySignature: bytesToBase64(keys.signedPrekeySignature),

@@ -1,8 +1,10 @@
 from fastapi.testclient import TestClient
 
 from tests.helpers import (
+    auth_headers,
     b64,
     client,
+    connect,
     conversation,
     envelope,
     login_new_device,
@@ -20,9 +22,7 @@ def test_recipient_devices_excludes_sender_and_devices_without_keys() -> None:
     bob_keyless_device = login_new_device(bob["username"])
     conversation_id = conversation(alice, bob)
 
-    response = client.get(
-        f"/conversations/{conversation_id}/devices", params={"device_id": alice["device_id"]}
-    )
+    response = client.get(f"/conversations/{conversation_id}/devices", headers=auth_headers(alice))
 
     assert response.status_code == 200
     device_ids = response.json()["device_ids"]
@@ -37,9 +37,9 @@ def test_websocket_routes_each_envelope_only_to_its_device(ws_client: TestClient
     conversation_id = conversation(alice, bob)
 
     with (
-        ws_client.websocket_connect(f"/ws?device_id={alice['device_id']}") as alice_ws,
-        ws_client.websocket_connect(f"/ws?device_id={bob['device_id']}") as bob_ws,
-        ws_client.websocket_connect(f"/ws?device_id={bob_second['device_id']}") as bob_second_ws,
+        connect(ws_client, alice) as alice_ws,
+        connect(ws_client, bob) as bob_ws,
+        connect(ws_client, bob_second) as bob_second_ws,
     ):
         alice_ws.send_json(
             outgoing(
@@ -72,8 +72,8 @@ def test_websocket_drops_envelopes_for_devices_outside_theconversation(
     alice_outsider = conversation(alice, outsider)
 
     with (
-        ws_client.websocket_connect(f"/ws?device_id={alice['device_id']}") as alice_ws,
-        ws_client.websocket_connect(f"/ws?device_id={outsider['device_id']}") as outsider_ws,
+        connect(ws_client, alice) as alice_ws,
+        connect(ws_client, outsider) as outsider_ws,
     ):
         # Envelope para o outsider numa conversa em que ele não está - tem de
         # ser descartado. A seguir, uma mensagem legítima para ele: tem de ser
@@ -93,8 +93,8 @@ def test_websocket_ignores_malformed_payloads(ws_client: TestClient) -> None:
     conversation_id = conversation(alice, bob)
 
     with (
-        ws_client.websocket_connect(f"/ws?device_id={alice['device_id']}") as alice_ws,
-        ws_client.websocket_connect(f"/ws?device_id={bob['device_id']}") as bob_ws,
+        connect(ws_client, alice) as alice_ws,
+        connect(ws_client, bob) as bob_ws,
     ):
         alice_ws.send_json({"conversation_id": conversation_id, "text": "texto simples antigo"})
         alice_ws.send_json(outgoing(conversation_id, envelope(bob["device_id"], 0)))

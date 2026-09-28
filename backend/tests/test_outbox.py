@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.models import PendingMessage
 from app.services import outbox
-from tests.helpers import conversation, envelope, outgoing, register, wait_until
+from tests.helpers import connect, conversation, envelope, outgoing, register, wait_until
 
 
 def _payload(sender: dict[str, Any], conversation_id: str, n: int) -> dict[str, Any]:
@@ -30,11 +30,11 @@ def test_offline_recipient_receives_message_on_connect(ws_client: TestClient) ->
     bob = register()
     conversation_id = conversation(alice, bob)
 
-    with ws_client.websocket_connect(f"/ws?device_id={alice['device_id']}") as alice_ws:
+    with connect(ws_client, alice) as alice_ws:
         alice_ws.send_json(outgoing(conversation_id, envelope(bob["device_id"], 0)))
         wait_until(lambda: len(_pending_ids(bob)) == 1)
 
-    with ws_client.websocket_connect(f"/ws?device_id={bob['device_id']}") as bob_ws:
+    with connect(ws_client, bob) as bob_ws:
         received = bob_ws.receive_json()
 
     assert received["type"] == "message"
@@ -49,7 +49,7 @@ def test_ack_removes_the_message_from_the_queue(ws_client: TestClient) -> None:
     conversation_id = conversation(alice, bob)
     outbox.enqueue(uuid.UUID(bob["device_id"]), _payload(alice, conversation_id, 0))
 
-    with ws_client.websocket_connect(f"/ws?device_id={bob['device_id']}") as bob_ws:
+    with connect(ws_client, bob) as bob_ws:
         received = bob_ws.receive_json()
         bob_ws.send_json({"type": "ack", "message_ids": [received["message_id"]]})
         wait_until(lambda: _pending_ids(bob) == [])
@@ -61,9 +61,9 @@ def test_message_without_ack_is_redelivered_on_reconnect(ws_client: TestClient) 
     conversation_id = conversation(alice, bob)
     outbox.enqueue(uuid.UUID(bob["device_id"]), _payload(alice, conversation_id, 0))
 
-    with ws_client.websocket_connect(f"/ws?device_id={bob['device_id']}") as bob_ws:
+    with connect(ws_client, bob) as bob_ws:
         first = bob_ws.receive_json()
-    with ws_client.websocket_connect(f"/ws?device_id={bob['device_id']}") as bob_ws:
+    with connect(ws_client, bob) as bob_ws:
         second = bob_ws.receive_json()
 
     assert second["message_id"] == first["message_id"]
@@ -76,7 +76,7 @@ def test_pending_messages_are_delivered_in_order(ws_client: TestClient) -> None:
     for n in range(3):
         outbox.enqueue(uuid.UUID(bob["device_id"]), _payload(alice, conversation_id, n))
 
-    with ws_client.websocket_connect(f"/ws?device_id={bob['device_id']}") as bob_ws:
+    with connect(ws_client, bob) as bob_ws:
         received = [bob_ws.receive_json()["header"]["n"] for _ in range(3)]
 
     assert received == [0, 1, 2]
@@ -91,7 +91,7 @@ def test_ack_from_another_device_does_not_delete(ws_client: TestClient) -> None:
     )
     outbox.enqueue(uuid.UUID(carol["device_id"]), _payload(alice, conversation(alice, carol), 0))
 
-    with ws_client.websocket_connect(f"/ws?device_id={carol['device_id']}") as carol_ws:
+    with connect(ws_client, carol) as carol_ws:
         carol_message = carol_ws.receive_json()
         # O ack do Carol inclui o id da mensagem do Bob: só a dele pode sair
         carol_ws.send_json(
@@ -108,8 +108,8 @@ def test_live_delivery_stays_pending_until_ack(ws_client: TestClient) -> None:
     conversation_id = conversation(alice, bob)
 
     with (
-        ws_client.websocket_connect(f"/ws?device_id={alice['device_id']}") as alice_ws,
-        ws_client.websocket_connect(f"/ws?device_id={bob['device_id']}") as bob_ws,
+        connect(ws_client, alice) as alice_ws,
+        connect(ws_client, bob) as bob_ws,
     ):
         alice_ws.send_json(outgoing(conversation_id, envelope(bob["device_id"], 0)))
         received = bob_ws.receive_json()
