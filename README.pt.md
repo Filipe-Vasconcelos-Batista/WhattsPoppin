@@ -97,6 +97,7 @@ ficam para depois da 1.0.
 WhattsPoppin/
 ├── frontend/    React Native + Expo (TypeScript) — npm run web|android|ios
 ├── backend/     FastAPI (Python) — .venv próprio, migrações em migrations/
+├── dev/         scripts de desenvolvimento (federation.sh)
 ├── Documents/   mockups de design (PDF) + projeto-chat-selfhosted.yaml (PT) / project-chat-selfhosted.yaml (EN)
 ├── LICENSE
 ├── README.md    (inglês)
@@ -137,21 +138,28 @@ do uvicorn é o que deixa os outros dispositivos da rede ligarem-se.
 
 ### Dois servidores em dev (para a federação)
 
+Um só comando, na raiz do projeto:
+
 ```bash
-# uma vez: a BD do servidor B
-docker exec -it whattspoppin-postgres createdb -U whattspoppin whattspoppin_b
-
-# servidor A (localhost:8001, BD de dev) e B (localhost:8002), cada um no seu terminal
-backend/dev/run-server.sh a
-backend/dev/run-server.sh b
-
-# cliente web de cada um, também em terminais separados (dentro de frontend/)
-npm run web:a   # http://localhost:8091 -> servidor A
-npm run web:b   # http://localhost:8092 -> servidor B
+dev/federation.sh
 ```
 
-O script aplica as migrações e arranca o uvicorn. Cada cliente tem o seu
-próprio `localStorage`, por isso as sessões não se misturam. Os dois
+Arranca o Postgres, cria a BD do servidor B se ainda não existir, e põe a
+correr os quatro processos no mesmo terminal, cada linha com o seu prefixo:
+
+| Prefixo | O quê | Endereço |
+|---|---|---|
+| `[A]` | servidor A (BD de dev) | `localhost:8001` |
+| `[B]` | servidor B (BD `whattspoppin_b`) | `localhost:8002` |
+| `[web-a]` | cliente web do A | http://localhost:8091 |
+| `[web-b]` | cliente web do B | http://localhost:8092 |
+
+**Ctrl+C** pára tudo; se um dos processos morrer (ex. uma porta ocupada), os
+outros também param. Cada cliente tem o seu próprio `localStorage`, por
+isso as sessões não se misturam.
+
+Para correr só uma peça: `backend/dev/run-server.sh a|b` (servidor, com
+migrações) ou `npm run web:a|web:b` dentro de `frontend/`. Os dois
 servidores ainda não falam um com o outro — isso vem nas fases seguintes da
 0.2.0.
 

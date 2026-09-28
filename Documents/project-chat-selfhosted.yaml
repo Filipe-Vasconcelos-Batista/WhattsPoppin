@@ -56,7 +56,10 @@ implementation_status:
       per domain, with two partial indexes. Usernames are lowercase (sign-up
       and login convert them), 3-32 characters from a-z 0-9 . _ -
     - >
-      two servers in dev - backend/dev/run-server.sh a|b starts server A
+      two servers in dev - dev/federation.sh starts everything in a single
+      terminal (Postgres, B's DB if missing, both servers and both web
+      clients, prefixed per process; Ctrl+C stops everything). Underneath,
+      backend/dev/run-server.sh a|b starts server A
       (localhost:8001, dev DB) or B (localhost:8002, whattspoppin_b DB), with
       migrations and --host 0.0.0.0; npm run web:a|web:b starts each one's
       web client (ports 8091/8092, separate localStorage). The frontend works

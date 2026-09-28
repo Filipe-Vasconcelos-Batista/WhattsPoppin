@@ -95,6 +95,7 @@ come after 1.0.
 WhattsPoppin/
 ├── frontend/    React Native + Expo (TypeScript) — npm run web|android|ios
 ├── backend/     FastAPI (Python) — its own .venv, migrations in migrations/
+├── dev/         development scripts (federation.sh)
 ├── Documents/   design mockups (PDF) + project-chat-selfhosted.yaml (EN) / projeto-chat-selfhosted.yaml (PT)
 ├── LICENSE
 ├── README.md    (English)
@@ -135,21 +136,29 @@ on the network works too), so there are no IPs hard-coded. uvicorn's
 
 ### Two servers in dev (for federation)
 
+A single command, from the project root:
+
 ```bash
-# once: server B's database
-docker exec -it whattspoppin-postgres createdb -U whattspoppin whattspoppin_b
-
-# server A (localhost:8001, dev DB) and B (localhost:8002), each in its own terminal
-backend/dev/run-server.sh a
-backend/dev/run-server.sh b
-
-# each one's web client, also in separate terminals (inside frontend/)
-npm run web:a   # http://localhost:8091 -> server A
-npm run web:b   # http://localhost:8092 -> server B
+dev/federation.sh
 ```
 
-The script applies the migrations and starts uvicorn. Each client has its
-own `localStorage`, so the sessions don't mix. The two servers don't talk to
+It starts Postgres, creates server B's database if it doesn't exist yet,
+and runs the four processes in the same terminal, each line with its own
+prefix:
+
+| Prefix | What | Address |
+|---|---|---|
+| `[A]` | server A (dev DB) | `localhost:8001` |
+| `[B]` | server B (`whattspoppin_b` DB) | `localhost:8002` |
+| `[web-a]` | A's web client | http://localhost:8091 |
+| `[web-b]` | B's web client | http://localhost:8092 |
+
+**Ctrl+C** stops everything; if one of the processes dies (e.g. a port is
+taken), the others stop too. Each client has its own `localStorage`, so the
+sessions don't mix.
+
+To run a single piece: `backend/dev/run-server.sh a|b` (server, with
+migrations) or `npm run web:a|web:b` inside `frontend/`. The two servers don't talk to
 each other yet — that comes in the next phases of 0.2.0.
 
 ## What already works

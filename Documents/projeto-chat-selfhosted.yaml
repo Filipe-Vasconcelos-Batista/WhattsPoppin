@@ -55,7 +55,10 @@ estado_de_implementacao:
       username é único por domínio, com dois índices parciais. Usernames em
       minúsculas (registo e login convertem), 3-32 caracteres de a-z 0-9 . _ -
     - >
-      dois servidores em dev - backend/dev/run-server.sh a|b arranca o
+      dois servidores em dev - dev/federation.sh arranca tudo num só
+      terminal (Postgres, BD do B se faltar, os dois servidores e os dois
+      clientes web, com prefixo por processo; Ctrl+C pára tudo). Por baixo,
+      backend/dev/run-server.sh a|b arranca o
       servidor A (localhost:8001, BD de dev) ou B (localhost:8002, BD
       whattspoppin_b), com migrações e --host 0.0.0.0; npm run web:a|web:b
       arranca o cliente web de cada um (portas 8091/8092, localStorage
