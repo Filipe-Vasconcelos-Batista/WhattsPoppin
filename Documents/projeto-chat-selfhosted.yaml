@@ -65,6 +65,28 @@ estado_de_implementacao:
       separado). O frontend descobre sozinho o endereço do backend - na web
       pelo host da página, na app nativa pelo host do servidor do Expo -
       com EXPO_PUBLIC_API_URL para forçar outro
+    - >
+      identidade do servidor (F3 da 0.2.0, por verificar à mão com os dois
+      servidores de dev - os testes automáticos passam) - cada servidor tem uma chave
+      Ed25519 (SERVER_SIGNING_KEY_PATH, fora da BD, criada no primeiro
+      arranque com permissões 0600; backend/data/ e backend/dev/keys/ estão
+      no .gitignore) e publica-a em GET /.well-known/whattspoppin/server.
+      Os pedidos entre servidores levam o cabeçalho Authorization: WP-Sig e
+      GET /_federation/v1/ping é o primeiro endpoint assinado (serve também
+      de diagnóstico). Quem recebe (app/federation/auth.py, dependência
+      federation_origin) recusa com 401 um cabeçalho inválido, um destino que
+      não é este servidor, uma origem igual a este servidor ou que não é um
+      domínio, um ts fora de ±5 minutos e uma assinatura que não verifica, e
+      com 403 um domínio bloqueado. No primeiro contacto vai buscar a chave
+      ao .well-known, verifica a assinatura e só então a fixa (TOFU) em
+      federated_servers (migração 008); a partir daí não a volta a pedir.
+      Se uma assinatura falhar e o .well-known passar a publicar outra chave,
+      o pedido é recusado e a chave nova fica em changed_key e key_changed_at,
+      sem substituir a fixada, à espera de um admin. Os pedidos de saída
+      passam por app/federation/client.py (federation_request), que assina
+      os mesmos bytes que envia; backend/dev/federation-ping.sh a
+      localhost:8002 testa-o à mão. FEDERATION_ALLOW_HTTP=true, só nos .env
+      de dev, permite http:// no .well-known e nos pedidos
     - lista de conversas mostra todos os utilizadores do servidor; a
       conversa só é criada na BD quando se abre pela primeira vez
       (get_or_create, não é pré-criada no registo)
@@ -115,10 +137,23 @@ estado_de_implementacao:
     - cifra só em 1:1 e com arestas conhecidas - inícios de sessão
       simultâneos podem perder as mensagens que se cruzam (sem arquivo de
       sessões), sem rotação de SPK, sem reposição automática de OPKs
-    - sem federação - já há identificador user@domínio, mas ainda não há
-      .well-known, assinatura de pedidos nem federated_servers, e os dois
-      servidores de dev não falam um com o outro (é o resto da 0.2.0, ver
-      proxima_versao)
+    - sem federação a sério - já há identificador user@domínio e identidade
+      do servidor (chave, .well-known, pedidos assinados, TOFU), mas os
+      servidores ainda não trocam perfis, chaves nem mensagens (F4-F7 da
+      0.2.0, ver proxima_versao)
+    - >
+      um pedido federado capturado pode ser reenviado dentro da janela de
+      ±5 minutos (exige quebrar o TLS). O PUT /_federation/v1/send/{txn_id}
+      da F6 é idempotente pelo txn_id
+    - >
+      o servidor vai buscar o .well-known ao domínio que quem lhe escreve
+      indicar, incluindo endereços internos, e não limita pedidos - é
+      inerente à federação aberta. Bloquear IPs privados fora de dev e
+      limitar a taxa ficam para o deploy com HTTPS (ver instalacao)
+    - >
+      uma chave de servidor mudada fica só marcada em federated_servers
+      (changed_key, key_changed_at) e o servidor continua recusado; aceitá-la
+      ou rejeitá-la exige o ecrã de admin (ver papeis_e_administracao)
     - sem alcunha nem deteção de ambiguidade - mostra-se sempre o nome de
       exibição
     - registo aberto, sem código de convite nem aprovação de admin
@@ -181,8 +216,13 @@ proxima_versao:
       8001/8002, clientes web em 8091/8092) - detalhe em
       estado_de_implementacao.construido
     F3: >
-      identidade do servidor - chave de assinatura, .well-known, assinatura
-      e verificação de pedidos, tabela federated_servers (TOFU)
+      feito mas por verificar à mão - identidade do servidor (chave de
+      assinatura, .well-known, assinatura e verificação de pedidos, tabela
+      federated_servers com TOFU, marcação da chave mudada). Código e testes
+      automáticos escritos (ruff, mypy e pytest passam); falta a verificação
+      manual com dois servidores (federation-ping.sh nos dois sentidos, e a
+      recusa depois de apagar a chave de A) - detalhe em
+      estado_de_implementacao.construido
     F4: perfil remoto, utilizadores-sombra, ecrã "Adicionar contacto"
     F5: devices e prekey bundles remotos por proxy no servidor local
     F6: >
@@ -517,7 +557,16 @@ federacao:
     porque_nao_handshake: >
       o desenho inicial tinha um desafio + assinatura bidirecional; com todos
       os pedidos assinados é uma ida e volta a mais sem ganho real
-  tabela_federated_servers: [domain, verify_key, key_id, trust_status, first_seen_at, last_seen_at]
+  tabela_federated_servers: >
+    [domain (PK), key_id, verify_key (base64), trust_status, first_seen_at,
+    last_seen_at, changed_key, key_changed_at] - changed_key e key_changed_at
+    só se preenchem quando o servidor passa a publicar outra chave (a fixada
+    em verify_key nunca é substituída sozinha)
+  configuracao: >
+    SERVER_NAME (domínio deste servidor), SERVER_SIGNING_KEY_PATH (ficheiro
+    da chave, por omissão backend/data/signing.key) e FEDERATION_ALLOW_HTTP
+    (false por omissão - HTTPS obrigatório; só os .env de dev, em
+    backend/dev/, o põem a true)
   modos:
     aberto: trusted automático no primeiro contacto (default escolhido, o único na 0.2.0)
     restrito: fica pending até admin aprovar (vem com o ecrã de admin)
@@ -539,6 +588,7 @@ federacao:
     CORS para outros domínios nem revela o IP a servidores alheios, e a
     cifra no frontend não muda.
   endpoints:
+    - GET  /_federation/v1/ping                           # {origin, server_name} - assinado, diagnóstico (F3)
     - GET  /_federation/v1/users/{username}/profile       # {identifier, display_name}
     - GET  /_federation/v1/users/{username}/devices       # devices ativos com chaves
     - POST /_federation/v1/devices/{id}/prekey-bundle     # POST porque gasta uma OPK

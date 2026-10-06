@@ -158,8 +158,46 @@ taken), the others stop too. Each client has its own `localStorage`, so the
 sessions don't mix.
 
 To run a single piece: `backend/dev/run-server.sh a|b` (server, with
-migrations) or `npm run web:a|web:b` inside `frontend/`. The two servers don't talk to
-each other yet — that comes in the next phases of 0.2.0.
+migrations) or `npm run web:a|web:b` inside `frontend/`. The two servers can
+already identify each other (see below), but don't exchange messages yet —
+that comes in the next phases of 0.2.0.
+
+### Server identity and the signed ping
+
+Each server has an Ed25519 key that it uses to sign the requests it makes to
+other servers, and it publishes the public half at
+`/.well-known/whattspoppin/server`. The key lives in a file, **outside the
+DB** (a stolen dump is not enough for someone to impersonate the server),
+created automatically on first start with `0600` permissions:
+
+| Where | File |
+|---|---|
+| Normal server | `backend/data/signing.key` (change it with `SERVER_SIGNING_KEY_PATH`) |
+| Dev server A | `backend/dev/keys/server-a.key` |
+| Dev server B | `backend/dev/keys/server-b.key` |
+
+These folders are in `.gitignore`: **the private key never goes into Git**.
+The dev `.env` files (`backend/dev/server-*.env`) also set
+`FEDERATION_ALLOW_HTTP=true`, because in dev the servers talk over HTTP;
+outside dev, federation requires HTTPS.
+
+With `dev/federation.sh` running, to have one server ping the other:
+
+```bash
+backend/dev/federation-ping.sh a localhost:8002   # A pings B
+backend/dev/federation-ping.sh b localhost:8001   # B pings A
+```
+
+The first argument is the sender and the second the destination. It answers
+`200 {"origin": "localhost:8001", ...}`. The first time, the destination
+fetches the sender's key from `.well-known` and **pins it** (trust on first
+use); on later requests it doesn't ask for it again.
+
+To see a changed key being refused: stop everything, delete
+`backend/dev/keys/server-a.key`, start again (A generates a new key) and
+repeat the ping from A to B. B refuses with 401, logs a warning and flags the
+new key in the DB (`changed_key`, `key_changed_at` in `federated_servers`),
+never accepting it on its own.
 
 ## What already works
 

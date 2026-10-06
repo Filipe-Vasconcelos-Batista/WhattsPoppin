@@ -160,8 +160,45 @@ isso as sessões não se misturam.
 
 Para correr só uma peça: `backend/dev/run-server.sh a|b` (servidor, com
 migrações) ou `npm run web:a|web:b` dentro de `frontend/`. Os dois
-servidores ainda não falam um com o outro — isso vem nas fases seguintes da
-0.2.0.
+servidores já se identificam um ao outro (ver abaixo), mas ainda não trocam
+mensagens — isso vem nas fases seguintes da 0.2.0.
+
+### Identidade dos servidores e o ping assinado
+
+Cada servidor tem uma chave Ed25519 que usa para assinar os pedidos que faz a
+outros servidores, e publica a parte pública em
+`/.well-known/whattspoppin/server`. A chave fica num ficheiro, **fora da BD**
+(um dump roubado não chega para alguém se fazer passar pelo servidor), criado
+sozinho no primeiro arranque com permissões `0600`:
+
+| Onde | Ficheiro |
+|---|---|
+| Servidor normal | `backend/data/signing.key` (muda com `SERVER_SIGNING_KEY_PATH`) |
+| Servidor A de dev | `backend/dev/keys/server-a.key` |
+| Servidor B de dev | `backend/dev/keys/server-b.key` |
+
+Estas pastas estão no `.gitignore`: **a chave privada nunca vai para o Git**.
+Os `.env` de dev (`backend/dev/server-*.env`) põem também
+`FEDERATION_ALLOW_HTTP=true`, porque em dev os servidores falam por HTTP;
+fora de dev a federação exige HTTPS.
+
+Com `dev/federation.sh` a correr, para um servidor pingar o outro:
+
+```bash
+backend/dev/federation-ping.sh a localhost:8002   # A pinga B
+backend/dev/federation-ping.sh b localhost:8001   # B pinga A
+```
+
+O primeiro argumento é quem envia e o segundo o destino. Responde
+`200 {"origin": "localhost:8001", ...}`. Na primeira vez o destino vai buscar
+a chave de quem pinga ao `.well-known` e **fixa-a** (confiança no primeiro
+contacto); nas seguintes já não volta a pedi-la.
+
+Para ver a recusa de uma chave mudada: pára tudo, apaga
+`backend/dev/keys/server-a.key`, arranca outra vez (o A gera uma chave nova) e
+repete o ping do A ao B. O B recusa com 401, regista um aviso no log e marca a
+chave nova na BD (`changed_key`, `key_changed_at` em `federated_servers`),
+sem nunca a aceitar sozinho.
 
 ## O que já funciona
 

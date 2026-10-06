@@ -66,6 +66,29 @@ implementation_status:
       out the backend address by itself - on the web from the page's host,
       in the native app from the Expo dev server's host - with
       EXPO_PUBLIC_API_URL to force another one
+    - >
+      server identity (F3 of 0.2.0, not yet checked by hand with the two dev
+      servers - the automated tests pass) - each server has an Ed25519 key
+      (SERVER_SIGNING_KEY_PATH, outside the DB, created on first start with
+      0600 permissions; backend/data/ and backend/dev/keys/ are in
+      .gitignore) and publishes it at GET /.well-known/whattspoppin/server.
+      Server-to-server requests carry the Authorization: WP-Sig header and
+      GET /_federation/v1/ping is the first signed endpoint (it doubles as a
+      diagnostic). The receiver (app/federation/auth.py, the
+      federation_origin dependency) refuses with 401 an invalid header, a
+      destination that is not this server, an origin equal to this server or
+      that is not a domain, a ts outside ±5 minutes and a signature that
+      does not verify, and with 403 a blocked domain. On first contact it
+      fetches the key from .well-known, verifies the signature and only then
+      pins the key (TOFU) in federated_servers (migration 008); after that it
+      does not ask for it again. If a signature fails and .well-known now
+      publishes another key, the request is refused and the new key is
+      stored in changed_key and key_changed_at, without replacing the pinned
+      one, waiting for an admin. Outgoing requests go through
+      app/federation/client.py (federation_request), which signs the same
+      bytes it sends; backend/dev/federation-ping.sh a localhost:8002 tests
+      it by hand. FEDERATION_ALLOW_HTTP=true, only in the dev .env files,
+      allows http:// for .well-known and for requests
     - the conversation list shows every user on the server; a conversation
       is only created in the DB the first time it is opened (get_or_create,
       not pre-created on sign-up)
@@ -122,10 +145,23 @@ implementation_status:
     - encryption only in 1:1 and with known rough edges - simultaneous
       session starts may lose the messages that cross (no session archive),
       no SPK rotation, no automatic OPK replenishment
-    - no federation - there is a user@domain identifier now, but no
-      .well-known, request signing or federated_servers yet, and the two dev
-      servers don't talk to each other (that is the rest of 0.2.0, see
+    - no real federation - there is a user@domain identifier and a server
+      identity (key, .well-known, signed requests, TOFU), but the servers
+      don't exchange profiles, keys or messages yet (F4-F7 of 0.2.0, see
       next_version)
+    - >
+      a captured federated request can be replayed within the ±5 minute
+      window (it requires breaking TLS). The F6 PUT /_federation/v1/send/{txn_id}
+      is idempotent by txn_id
+    - >
+      the server fetches .well-known from whatever domain the sender names,
+      internal addresses included, and does not rate-limit - it comes with
+      open federation. Blocking private IPs outside dev and rate limiting
+      are left for the HTTPS deployment (see installation)
+    - >
+      a changed server key is only flagged in federated_servers
+      (changed_key, key_changed_at) and the server stays refused; accepting
+      or rejecting it needs the admin screen (see roles_and_administration)
     - no nicknames or ambiguity detection - the display name is always shown
     - open registration, no invite code or admin approval
     - >
@@ -187,8 +223,13 @@ next_version:
       8001/8002, web clients on 8091/8092) - details in
       implementation_status.built
     F3: >
-      server identity - signing key, .well-known, request signing and
-      verification, federated_servers table (TOFU)
+      done but not yet checked by hand - server identity (signing key,
+      .well-known, request signing and verification, federated_servers table
+      with TOFU, flagging of a changed key). Code and automated tests are
+      written (ruff, mypy and pytest pass); the manual check with two servers
+      is still missing (federation-ping.sh in both directions, and the
+      refusal after deleting A's key) - details in
+      implementation_status.built
     F4: remote profile, shadow users, "Add contact" screen
     F5: remote devices and prekey bundles proxied through the local server
     F6: >
@@ -523,7 +564,16 @@ federation:
     why_no_handshake: >
       the initial design had a bidirectional challenge + signature; with
       every request signed it is an extra round trip with no real gain
-  federated_servers_table: [domain, verify_key, key_id, trust_status, first_seen_at, last_seen_at]
+  federated_servers_table: >
+    [domain (PK), key_id, verify_key (base64), trust_status, first_seen_at,
+    last_seen_at, changed_key, key_changed_at] - changed_key and
+    key_changed_at are only filled when the server starts publishing another
+    key (the one pinned in verify_key is never replaced on its own)
+  configuration: >
+    SERVER_NAME (this server's domain), SERVER_SIGNING_KEY_PATH (the key
+    file, backend/data/signing.key by default) and FEDERATION_ALLOW_HTTP
+    (false by default - HTTPS is required; only the dev .env files in
+    backend/dev/ set it to true)
   modes:
     open: trusted automatically on first contact (the chosen default, the only one in 0.2.0)
     restricted: stays pending until an admin approves (comes with the admin screen)
@@ -545,6 +595,7 @@ federation:
     doesn't need CORS for other domains or reveal its IP to foreign
     servers, and the encryption in the frontend doesn't change.
   endpoints:
+    - GET  /_federation/v1/ping                           # {origin, server_name} - signed, diagnostic (F3)
     - GET  /_federation/v1/users/{username}/profile       # {identifier, display_name}
     - GET  /_federation/v1/users/{username}/devices       # active devices with keys
     - POST /_federation/v1/devices/{id}/prekey-bundle     # POST because it spends an OPK

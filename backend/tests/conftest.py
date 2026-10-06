@@ -1,8 +1,5 @@
-"""Força os testes a correr numa BD própria (TEST_DATABASE_URL), nunca na de
-dev. Tem de correr antes de qualquer módulo importar `app`, porque
-`app.db` liga-se a DATABASE_URL no momento do import."""
-
 import os
+import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 from urllib.parse import urlparse
@@ -31,6 +28,10 @@ if not _test_db_name.endswith("_test"):
 
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["SERVER_NAME"] = "test.local"
+
+_signing_key_dir = tempfile.TemporaryDirectory(prefix="whattspoppin-test-keys-")
+os.environ["SERVER_SIGNING_KEY_PATH"] = str(Path(_signing_key_dir.name) / "signing.key")
+os.environ["FEDERATION_ALLOW_HTTP"] = "true"
 
 MIGRATE_TABLE = "migratehistory"
 
