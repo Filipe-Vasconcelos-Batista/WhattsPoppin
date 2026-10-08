@@ -66,8 +66,8 @@ estado_de_implementacao:
       pelo host da página, na app nativa pelo host do servidor do Expo -
       com EXPO_PUBLIC_API_URL para forçar outro
     - >
-      identidade do servidor (F3 da 0.2.0, por verificar à mão com os dois
-      servidores de dev - os testes automáticos passam) - cada servidor tem uma chave
+      identidade do servidor (F3 da 0.2.0, verificada à mão com os dois
+      servidores de dev) - cada servidor tem uma chave
       Ed25519 (SERVER_SIGNING_KEY_PATH, fora da BD, criada no primeiro
       arranque com permissões 0600; backend/data/ e backend/dev/keys/ estão
       no .gitignore) e publica-a em GET /.well-known/whattspoppin/server.
@@ -216,12 +216,12 @@ proxima_versao:
       8001/8002, clientes web em 8091/8092) - detalhe em
       estado_de_implementacao.construido
     F3: >
-      feito mas por verificar à mão - identidade do servidor (chave de
-      assinatura, .well-known, assinatura e verificação de pedidos, tabela
-      federated_servers com TOFU, marcação da chave mudada). Código e testes
-      automáticos escritos (ruff, mypy e pytest passam); falta a verificação
-      manual com dois servidores (federation-ping.sh nos dois sentidos, e a
-      recusa depois de apagar a chave de A) - detalhe em
+      feito - identidade do servidor (chave de assinatura, .well-known,
+      assinatura e verificação de pedidos, tabela federated_servers com
+      TOFU, marcação da chave mudada). Testes automáticos (ruff, mypy e
+      pytest) e verificação manual com os dois servidores de dev feitas
+      (federation-ping.sh nos dois sentidos, e recusa com a chave mudada
+      depois de apagar a chave de A) - detalhe em
       estado_de_implementacao.construido
     F4: perfil remoto, utilizadores-sombra, ecrã "Adicionar contacto"
     F5: devices e prekey bundles remotos por proxy no servidor local

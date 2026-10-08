@@ -67,8 +67,8 @@ implementation_status:
       in the native app from the Expo dev server's host - with
       EXPO_PUBLIC_API_URL to force another one
     - >
-      server identity (F3 of 0.2.0, not yet checked by hand with the two dev
-      servers - the automated tests pass) - each server has an Ed25519 key
+      server identity (F3 of 0.2.0, checked by hand with the two dev
+      servers) - each server has an Ed25519 key
       (SERVER_SIGNING_KEY_PATH, outside the DB, created on first start with
       0600 permissions; backend/data/ and backend/dev/keys/ are in
       .gitignore) and publishes it at GET /.well-known/whattspoppin/server.
@@ -223,12 +223,11 @@ next_version:
       8001/8002, web clients on 8091/8092) - details in
       implementation_status.built
     F3: >
-      done but not yet checked by hand - server identity (signing key,
-      .well-known, request signing and verification, federated_servers table
-      with TOFU, flagging of a changed key). Code and automated tests are
-      written (ruff, mypy and pytest pass); the manual check with two servers
-      is still missing (federation-ping.sh in both directions, and the
-      refusal after deleting A's key) - details in
+      done - server identity (signing key, .well-known, request signing and
+      verification, federated_servers table with TOFU, flagging of a changed
+      key). Automated tests (ruff, mypy and pytest) and the manual check with
+      the two dev servers are done (federation-ping.sh in both directions,
+      and the refusal with a changed key after deleting A's key) - details in
       implementation_status.built
     F4: remote profile, shadow users, "Add contact" screen
     F5: remote devices and prekey bundles proxied through the local server
