@@ -91,8 +91,8 @@ implementation_status:
       allows http:// for .well-known and for requests
     - >
       contacts with requests and remote profiles (F4 of 0.2.0, brought
-      forward from 0.3; automated tests done, manual check with the two dev
-      servers pending) - contacts table (migration 009), one row per side
+      forward from 0.3; checked by hand with the two dev servers) -
+      contacts table (migration 009), one row per side
       with status pending_outgoing / pending_incoming / accepted. "Add
       contact" (+ button in the list) takes user@domain, or just the
       username for this server, and POST /contacts creates the request;
@@ -256,14 +256,17 @@ next_version:
       and the refusal with a changed key after deleting A's key) - details in
       implementation_status.built
     F4: >
-      done, not yet verified by hand - remote profile, shadow users, "Add
-      contact" screen, and contacts with requests and the end of the global
-      list (brought forward from 0.3, so "Add contact" is not built on
-      something temporary). Automated tests pass; the manual check with the
-      two dev servers is missing (dev/federation.sh: two local users
-      ask/accept and talk, and without accepting they cannot; on 8091 add
-      a user from localhost:8002 and they show up as pending with B's
-      display_name) - details in implementation_status.built
+      done - remote profile, shadow users, "Add contact" screen, and
+      contacts with requests and the end of the global list (brought
+      forward from 0.3, so "Add contact" is not built on something
+      temporary). Automated tests and the manual check with the two dev
+      servers are done (two local users ask/accept and talk, and without
+      accepting they cannot; on 8091 adding a user from localhost:8002
+      shows them as pending with B's display_name; the request does not
+      reach B yet - F6). In dev, after regenerating a server's key, the
+      other server keeps refusing it (401) until its row in
+      federated_servers is deleted there - the only way until the admin
+      screen - details in implementation_status.built
     F5: remote devices and prekey bundles proxied through the local server
     F6: >
       federated delivery - federation_outbox + worker with backoff,

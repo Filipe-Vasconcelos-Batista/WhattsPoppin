@@ -89,8 +89,8 @@ estado_de_implementacao:
       de dev, permite http:// no .well-known e nos pedidos
     - >
       contactos com pedidos e perfis remotos (F4 da 0.2.0, antecipada da
-      0.3; testes automáticos feitos, falta a verificação manual com os dois
-      servidores de dev) - tabela contacts (migração 009), uma linha por
+      0.3; verificada à mão com os dois servidores de dev) - tabela
+      contacts (migração 009), uma linha por
       lado com estado pending_outgoing / pending_incoming / accepted. O
       "Adicionar contacto" (botão + da lista) aceita user@domínio, ou só o
       username para este servidor, e o POST /contacts cria o pedido; pedir a
@@ -251,14 +251,16 @@ proxima_versao:
       depois de apagar a chave de A) - detalhe em
       estado_de_implementacao.construido
     F4: >
-      feita, falta verificar à mão - perfil remoto, utilizadores-sombra,
-      ecrã "Adicionar contacto", e contactos com pedidos e fim da lista
-      global (antecipados da 0.3, para o "Adicionar contacto" não assentar
-      em algo provisório). Os testes automáticos passam; falta a
-      verificação manual com os dois servidores de dev (dev/federation.sh:
-      dois utilizadores locais pedem/aceitam e conversam, e sem aceitar não
-      conseguem; em 8091 adicionar um utilizador de localhost:8002 e ele
-      aparece como pendente com o display_name de B) - detalhe em
+      feita - perfil remoto, utilizadores-sombra, ecrã "Adicionar contacto",
+      e contactos com pedidos e fim da lista global (antecipados da 0.3,
+      para o "Adicionar contacto" não assentar em algo provisório). Testes
+      automáticos e verificação manual com os dois servidores de dev feitos
+      (dois utilizadores locais pedem/aceitam e conversam, e sem aceitar não
+      conseguem; em 8091 adicionar um utilizador de localhost:8002 mostra-o
+      como pendente com o display_name de B; o pedido ainda não chega a B -
+      F6). Em dev, depois de regenerar a chave de um servidor, o outro
+      continua a recusá-lo (401) até se apagar lá a linha dele em
+      federated_servers - a única forma até haver ecrã de admin - detalhe em
       estado_de_implementacao.construido
     F5: devices e prekey bundles remotos por proxy no servidor local
     F6: >
