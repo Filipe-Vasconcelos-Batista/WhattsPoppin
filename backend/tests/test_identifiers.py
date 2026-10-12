@@ -8,7 +8,7 @@ from app.services.identifiers import (
     is_local,
     parse_identifier,
 )
-from tests.helpers import PASSWORD, client, register
+from tests.helpers import PASSWORD, client, make_contacts, register
 
 
 def test_local_users_get_the_server_name_as_domain() -> None:
@@ -48,6 +48,7 @@ def test_register_returns_the_full_identifier() -> None:
 
     assert alice["identifier"] == f"{alice['username']}@test.local"
     bob = register()
+    make_contacts(alice, bob)
     other = next(
         user
         for user in client.post(

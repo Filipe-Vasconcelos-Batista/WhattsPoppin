@@ -1,3 +1,4 @@
+from app.models.contact import Contact
 from app.models.conversation import Conversation, ConversationParticipant
 from app.models.device import Device
 from app.models.federated_server import FederatedServer
@@ -6,6 +7,7 @@ from app.models.pending_message import PendingMessage
 from app.models.user import User
 
 __all__ = [
+    "Contact",
     "Conversation",
     "ConversationParticipant",
     "Device",

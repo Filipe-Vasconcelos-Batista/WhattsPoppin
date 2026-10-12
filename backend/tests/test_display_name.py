@@ -2,7 +2,7 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
-from tests.helpers import PASSWORD, auth_headers, client, connect, register
+from tests.helpers import PASSWORD, auth_headers, client, connect, make_contacts, register
 
 
 def _update(session: dict[str, Any], display_name: str, http: TestClient = client) -> Any:
@@ -16,6 +16,7 @@ def _update(session: dict[str, Any], display_name: str, http: TestClient = clien
 def test_update_display_name_is_trimmed_and_persisted() -> None:
     alice = register()
     bob = register()
+    make_contacts(alice, bob)
 
     response = _update(alice, "  Alice Silva  ")
 
@@ -44,9 +45,10 @@ def test_update_display_name_rejects_empty_or_too_long() -> None:
     assert _update(alice, "a" * 80).status_code == 200
 
 
-def test_other_connected_devices_are_told_about_the_new_name(ws_client: TestClient) -> None:
+def test_contacts_are_told_about_the_new_name(ws_client: TestClient) -> None:
     alice = register()
     bob = register()
+    make_contacts(alice, bob)
 
     with connect(ws_client, bob) as bob_ws:
         assert _update(alice, "Alice Nova", http=ws_client).status_code == 200

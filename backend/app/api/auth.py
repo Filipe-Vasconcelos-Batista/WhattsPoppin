@@ -3,11 +3,15 @@ import uuid
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from app.api.contacts import ContactResponse, contact_response
 from app.api.deps import OptionalIdentity
+from app.core import config
 from app.db.sync import run_sync
+from app.models.contact import ACCEPTED
 from app.services.auth import AuthError, Identity, login, register
 from app.services.connections import connection_manager
-from app.services.users import list_other_users
+from app.services.contacts import ContactSummary, list_contacts
+from app.services.users import UserSummary, list_other_users
 
 router = APIRouter(prefix="/auth")
 
@@ -36,25 +40,31 @@ class AuthResponse(BaseModel):
     display_name: str
     identifier: str
     other_users: list[UserSummaryResponse]
+    contact_requests: list[ContactResponse]
 
 
 async def _finish(identity: Identity) -> AuthResponse:
-    other_users = await run_sync(list_other_users, identity.user_id)
+    other_users: list[UserSummary]
+    contact_requests: list[ContactSummary] = []
+    if config.SERVER_MODE == config.SERVER_MODE_DIRECTORY:
+        other_users = await run_sync(list_other_users, identity.user_id)
 
-    # avisa quem já está ligado, para a lista de conversas deles atualizar
-    # sem precisarem de refresh
-    if identity.is_new_user:
-        await connection_manager.broadcast(
-            {
-                "type": "user_registered",
-                "user": {
-                    "user_id": str(identity.user_id),
-                    "display_name": identity.display_name,
-                    "identifier": identity.identifier,
+        if identity.is_new_user:
+            await connection_manager.broadcast(
+                {
+                    "type": "user_registered",
+                    "user": {
+                        "user_id": str(identity.user_id),
+                        "display_name": identity.display_name,
+                        "identifier": identity.identifier,
+                    },
                 },
-            },
-            exclude=identity.device_id,
-        )
+                exclude=identity.device_id,
+            )
+    else:
+        contacts = await run_sync(list_contacts, identity.user_id)
+        other_users = [contact for contact in contacts if contact.status == ACCEPTED]
+        contact_requests = [contact for contact in contacts if contact.status != ACCEPTED]
 
     return AuthResponse(
         token=identity.token,
@@ -71,6 +81,7 @@ async def _finish(identity: Identity) -> AuthResponse:
             )
             for user in other_users
         ],
+        contact_requests=[contact_response(contact) for contact in contact_requests],
     )
 
 

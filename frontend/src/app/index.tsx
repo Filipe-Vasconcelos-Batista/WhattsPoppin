@@ -3,8 +3,10 @@ import { useEffect, useMemo } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ContactRequestList } from '../components/contacts/ContactRequestList';
 import { ConversationList } from '../components/conversations/ConversationList';
 import { ConversationsHeader } from '../components/conversations/ConversationsHeader';
+import { FloatingActionButton } from '../components/FloatingActionButton';
 import { LoadingState } from '../components/LoadingState';
 import { useIdentity } from '../context/IdentityContext';
 import { buildConversationSummaries, totalUnread } from '../messaging/conversationSummaries';
@@ -28,18 +30,29 @@ export default function ConversationsScreen() {
   if (identity.loading) return <LoadingState />;
   if (!identity.authenticated) return <Redirect href="/login" />;
 
+  function handleContactAction(action: Promise<void>) {
+    action.catch((error: unknown) => console.warn('Falha ao responder ao pedido:', error));
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
         <ConversationsHeader onSettingsPress={() => router.push('/profile')} />
       </View>
 
+      <View style={styles.requests}>
+        <ContactRequestList
+          requests={identity.contactRequests}
+          onAccept={(userId) => handleContactAction(identity.acceptContact(userId))}
+          onRemove={(userId) => handleContactAction(identity.removeContact(userId))}
+        />
+      </View>
+
       {identity.otherUsers.length === 0 ? (
         <View style={styles.center}>
           <Text style={styles.waitingTitle}>És o {identity.displayName}</Text>
           <Text style={styles.waitingSubtitle}>
-            Ainda não há mais ninguém registado neste servidor. Abre a app noutro dispositivo para
-            aparecer aqui.
+            {`Ainda não tens contactos. Toca no + e adiciona alguém pelo identificador (o teu é ${identity.identifier}).`}
           </Text>
         </View>
       ) : (
@@ -50,6 +63,10 @@ export default function ConversationsScreen() {
           />
         </View>
       )}
+
+      <View style={styles.fab}>
+        <FloatingActionButton onPress={() => router.push('/add-contact')} />
+      </View>
     </SafeAreaView>
   );
 }
@@ -63,10 +80,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 12,
   },
+  requests: {
+    paddingHorizontal: 20,
+    marginTop: 8,
+  },
   list: {
     flex: 1,
     paddingHorizontal: 20,
     marginTop: 8,
+  },
+  fab: {
+    position: 'absolute',
+    right: 24,
+    bottom: 32,
   },
   center: {
     flex: 1,

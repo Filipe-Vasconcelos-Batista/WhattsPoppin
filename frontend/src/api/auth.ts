@@ -1,4 +1,5 @@
 import { API_URL } from './config';
+import type { ContactSummary } from './contacts';
 import { bearer } from './session';
 
 export type UserSummary = {
@@ -15,6 +16,7 @@ export type AuthResponse = {
   display_name: string;
   identifier: string;
   other_users: UserSummary[];
+  contact_requests: ContactSummary[];
 };
 
 async function postAuth(path: string, body: object): Promise<AuthResponse> {

@@ -2,8 +2,11 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.api.deps import CurrentIdentity
+from app.core import config
 from app.db.sync import run_sync
 from app.services.connections import connection_manager
+from app.services.contacts import watcher_ids
+from app.services.messaging import active_device_ids
 from app.services.users import DisplayNameError, update_display_name
 
 router = APIRouter(prefix="/users")
@@ -26,17 +29,20 @@ async def update_display_name_endpoint(
     except DisplayNameError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    # Também chega aos outros devices do próprio utilizador, que assim
-    # atualizam o "O meu perfil" sem refresh.
-    await connection_manager.broadcast(
-        {
-            "type": "user_updated",
-            "user": {
-                "user_id": str(identity.user_id),
-                "display_name": display_name,
-                "identifier": identity.identifier,
-            },
+    payload: dict[str, object] = {
+        "type": "user_updated",
+        "user": {
+            "user_id": str(identity.user_id),
+            "display_name": display_name,
+            "identifier": identity.identifier,
         },
-        exclude=identity.device_id,
-    )
+    }
+    if config.SERVER_MODE == config.SERVER_MODE_DIRECTORY:
+        await connection_manager.broadcast(payload, exclude=identity.device_id)
+    else:
+        user_ids = [identity.user_id, *await run_sync(watcher_ids, identity.user_id)]
+        for user_id in user_ids:
+            for device_id in await run_sync(active_device_ids, user_id):
+                if device_id != identity.device_id:
+                    await connection_manager.send_to_device(device_id, payload)
     return DisplayNameResponse(display_name=display_name)

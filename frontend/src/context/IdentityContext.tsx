@@ -18,6 +18,12 @@ import {
   type AuthResponse,
   type UserSummary,
 } from '../api/auth';
+import {
+  acceptContact as acceptContactRequest,
+  addContact as addContactRequest,
+  removeContact as removeContactRequest,
+  type ContactSummary,
+} from '../api/contacts';
 import { setSessionToken } from '../api/session';
 import { updateDisplayName as updateDisplayNameRequest } from '../api/users';
 import { generateAndPublishDeviceKeys } from '../crypto/keys';
@@ -28,6 +34,12 @@ import {
 } from '../crypto/messaging';
 import { useSocketConnection } from '../hooks/useSocketConnection';
 import { newClientMessageId } from '../messaging/clientMessageId';
+import {
+  applyContact,
+  removeFromLists,
+  renameInLists,
+  type ContactLists,
+} from '../messaging/contactLists';
 import { createOutgoingQueue } from '../messaging/outgoingQueue';
 import { advanceStatus } from '../messaging/status';
 import { TYPING_EXPIRE_MS } from '../messaging/typingSignal';
@@ -57,7 +69,9 @@ type IncomingPayload =
     }
   | { type: 'typing'; conversation_id: string; sender_user_id: string; typing: boolean }
   | { type: 'user_registered'; user: UserSummary }
-  | { type: 'user_updated'; user: UserSummary };
+  | { type: 'user_updated'; user: UserSummary }
+  | { type: 'contact_updated'; contact: ContactSummary }
+  | { type: 'contact_removed'; user_id: string };
 
 type IdentityValue = {
   loading: boolean;
@@ -67,6 +81,10 @@ type IdentityValue = {
   displayName: string | null;
   identifier: string | null;
   otherUsers: UserSummary[];
+  contactRequests: ContactSummary[];
+  addContact: (identifier: string) => Promise<ContactSummary>;
+  acceptContact: (userId: string) => Promise<void>;
+  removeContact: (userId: string) => Promise<void>;
   messages: ChatMessage[];
   conversationUsers: Record<string, string>;
   rememberConversation: (otherUserId: string, conversationId: string) => void;
@@ -87,6 +105,12 @@ const IdentityContext = createContext<IdentityValue>({
   displayName: null,
   identifier: null,
   otherUsers: [],
+  contactRequests: [],
+  addContact: async () => {
+    throw new Error('Sem sessão');
+  },
+  acceptContact: async () => {},
+  removeContact: async () => {},
   messages: [],
   conversationUsers: {},
   rememberConversation: () => {},
@@ -107,16 +131,17 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [identifier, setIdentifier] = useState<string | null>(null);
-  const [otherUsers, setOtherUsers] = useState<UserSummary[]>([]);
+  const [contactLists, setContactLists] = useState<ContactLists>({
+    otherUsers: [],
+    contactRequests: [],
+  });
+  const { otherUsers, contactRequests } = contactLists;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [conversationUsers, setConversationUsers] = useState<Record<string, string>>({});
   const [typingConversations, setTypingConversations] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
   const typingTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
-  // Mensagens recebidas já tratadas, por `${sender_device_id}:${client_message_id}`
-  // - o servidor reenvia o que não recebeu ack e quem envia pode reenviar da
-  // outbox; decifrar a mesma mensagem duas vezes falharia (a chave já foi usada).
   const seenMessageIdsRef = useRef(new Set<string>());
   const sendRef = useRef<(payload: Record<string, unknown>) => boolean>(() => false);
   const messagesRef = useRef<ChatMessage[]>([]);
@@ -177,7 +202,10 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     setDeviceId(session.device_id);
     setDisplayName(session.display_name);
     setIdentifier(session.identifier);
-    setOtherUsers(session.other_users);
+    setContactLists({
+      otherUsers: session.other_users,
+      contactRequests: session.contact_requests ?? [],
+    });
     setConversationUsers(conversationUsersFrom(session.other_users));
     setAuthenticated(true);
     const storedMessages = await loadMessages(session.user_id);
@@ -197,6 +225,22 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
   async function updateDisplayName(newDisplayName: string) {
     if (!token) throw new Error('Sem sessão');
     setDisplayName(await updateDisplayNameRequest(newDisplayName));
+  }
+
+  async function addContact(contactIdentifier: string): Promise<ContactSummary> {
+    const contact = await addContactRequest(contactIdentifier);
+    setContactLists((prev) => applyContact(prev, contact));
+    return contact;
+  }
+
+  async function acceptContact(contactUserId: string) {
+    const contact = await acceptContactRequest(contactUserId);
+    setContactLists((prev) => applyContact(prev, contact));
+  }
+
+  async function removeContact(contactUserId: string) {
+    await removeContactRequest(contactUserId);
+    setContactLists((prev) => removeFromLists(prev, contactUserId));
   }
 
   async function register(username: string, password: string) {
@@ -261,10 +305,10 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
       }
 
       if (payload.type === 'user_registered') {
-        setOtherUsers((prev) =>
-          prev.some((user) => user.user_id === payload.user.user_id)
+        setContactLists((prev) =>
+          prev.otherUsers.some((user) => user.user_id === payload.user.user_id)
             ? prev
-            : [...prev, payload.user],
+            : { ...prev, otherUsers: [...prev.otherUsers, payload.user] },
         );
         return;
       }
@@ -274,13 +318,22 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
           setDisplayName(payload.user.display_name);
           return;
         }
-        setOtherUsers((prev) =>
-          prev.map((user) =>
-            user.user_id === payload.user.user_id
-              ? { ...user, display_name: payload.user.display_name }
-              : user,
-          ),
+        setContactLists((prev) =>
+          renameInLists(prev, payload.user.user_id, payload.user.display_name),
         );
+        return;
+      }
+
+      if (payload.type === 'contact_updated') {
+        setContactLists((prev) => applyContact(prev, payload.contact));
+        if (payload.contact.conversation_id) {
+          rememberConversation(payload.contact.user_id, payload.contact.conversation_id);
+        }
+        return;
+      }
+
+      if (payload.type === 'contact_removed') {
+        setContactLists((prev) => removeFromLists(prev, payload.user_id));
         return;
       }
 
@@ -330,7 +383,6 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
                 clientMessageId: payload.client_message_id,
               },
             ]);
-            // Também quando não decifra: tentar de novo não mudaria nada.
             ack();
           });
       }
@@ -343,9 +395,6 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     onUnauthorized: clearSession,
   });
 
-  // Layout effect, não effect normal: os efeitos dos filhos (ex.: o ecrã da
-  // conversa a marcar como lido) correm antes dos do pai, e leriam aqui a
-  // lista de mensagens ainda antiga. Os layout effects correm todos antes.
   useLayoutEffect(() => {
     sendRef.current = send;
     messagesRef.current = messages;
@@ -375,8 +424,6 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
         status: 'pending',
       },
     ]);
-    // Fica na outbox até o servidor confirmar ("sent") - com o socket em
-    // baixo espera, e sai quando ele abrir.
     outgoingQueue
       ?.enqueue({ clientMessageId, conversationId, text })
       .catch((error: unknown) => console.warn('Falha ao guardar mensagem na outbox:', error));
@@ -441,6 +488,10 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
         displayName,
         identifier,
         otherUsers,
+        contactRequests,
+        addContact,
+        acceptContact,
+        removeContact,
         messages,
         conversationUsers,
         rememberConversation,

@@ -62,7 +62,22 @@ def publish_keys(session: dict[str, Any]) -> None:
     assert response.status_code == 204
 
 
+def add_contact(session: dict[str, Any], identifier: str) -> dict[str, Any]:
+    response = client.post(
+        "/contacts", headers=auth_headers(session), json={"identifier": identifier}
+    )
+    assert response.status_code == 200, response.text
+    contact: dict[str, Any] = response.json()
+    return contact
+
+
+def make_contacts(a: dict[str, Any], b: dict[str, Any]) -> None:
+    add_contact(a, b["identifier"])
+    assert add_contact(b, a["identifier"])["status"] == "accepted"
+
+
 def conversation(a: dict[str, Any], b: dict[str, Any]) -> str:
+    make_contacts(a, b)
     response = client.post(
         "/conversations/with", headers=auth_headers(a), json={"other_user_id": b["user_id"]}
     )
@@ -90,8 +105,6 @@ def outgoing(
     }
 
 
-# O servidor processa o que recebe pelo socket de forma assíncrona - para
-# confirmar um efeito (ex.: ack apagou a linha) espera-se até ele aparecer.
 def wait_until(condition: Callable[[], bool], timeout: float = 2.0) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:

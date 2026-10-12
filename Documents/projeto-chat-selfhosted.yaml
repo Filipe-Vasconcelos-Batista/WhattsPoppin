@@ -87,12 +87,33 @@ estado_de_implementacao:
       os mesmos bytes que envia; backend/dev/federation-ping.sh a
       localhost:8002 testa-o à mão. FEDERATION_ALLOW_HTTP=true, só nos .env
       de dev, permite http:// no .well-known e nos pedidos
-    - lista de conversas mostra todos os utilizadores do servidor; a
-      conversa só é criada na BD quando se abre pela primeira vez
+    - >
+      contactos com pedidos e perfis remotos (F4 da 0.2.0, antecipada da
+      0.3; testes automáticos feitos, falta a verificação manual com os dois
+      servidores de dev) - tabela contacts (migração 009), uma linha por
+      lado com estado pending_outgoing / pending_incoming / accepted. O
+      "Adicionar contacto" (botão + da lista) aceita user@domínio, ou só o
+      username para este servidor, e o POST /contacts cria o pedido; pedir a
+      quem já te pediu aceita os dois. GET /contacts, POST
+      /contacts/{user_id}/accept e DELETE /contacts/{user_id} (recusar,
+      cancelar ou remover). A recusa nunca é revelada - quem pediu continua
+      a ver "pendente"; remover um contacto aceite põe o outro lado de novo
+      em pendente. Os dois lados são avisados pelo WebSocket
+      (contact_updated / contact_removed), e a mudança de nome
+      (user_updated) só chega a quem te tem na lista. Ninguém te escreve
+      antes de aceitares - o POST /conversations/with responde 403 sem
+      contacto aceite dos dois lados, e mensagens, recibos e "a escrever"
+      deixam de seguir para quem deixou de ser contacto, mesmo numa conversa
+      antiga. Para user@outro-servidor, o nosso servidor pede o perfil ao
+      outro com GET /_federation/v1/users/{username}/profile (assinado, só
+      responde por contas locais), confirma que o identificador devolvido é
+      o pedido e guarda-o como utilizador-sombra (linha em users com o
+      domínio, password_hash vazio, display_name atualizado a cada adição -
+      não consegue fazer login). Um pedido remoto fica só do nosso lado em
+      pending_outgoing; chega ao outro servidor com a entrega federada (F6)
+    - a conversa só é criada na BD quando se abre pela primeira vez
       (get_or_create, não é pré-criada no registo)
     - mensagens de texto 1:1 em tempo real via WebSocket
-    - lista atualiza-se sozinha quando alguém novo se regista (evento
-      user_registered), sem refresh
     - WebSocket reconecta-se sozinho se o backend cair/reiniciar
     - mensagens persistem no dispositivo (AsyncStorage/localStorage) por
       utilizador, sobrevivem a um refresh da página
@@ -137,10 +158,11 @@ estado_de_implementacao:
     - cifra só em 1:1 e com arestas conhecidas - inícios de sessão
       simultâneos podem perder as mensagens que se cruzam (sem arquivo de
       sessões), sem rotação de SPK, sem reposição automática de OPKs
-    - sem federação a sério - já há identificador user@domínio e identidade
-      do servidor (chave, .well-known, pedidos assinados, TOFU), mas os
-      servidores ainda não trocam perfis, chaves nem mensagens (F4-F7 da
-      0.2.0, ver proxima_versao)
+    - ainda sem federação a sério - já há identificador user@domínio,
+      identidade do servidor (chave, .well-known, pedidos assinados, TOFU) e
+      perfis remotos (utilizadores-sombra), mas os servidores ainda não
+      trocam chaves, pedidos de contacto nem mensagens (F5-F7 da 0.2.0, ver
+      proxima_versao)
     - >
       um pedido federado capturado pode ser reenviado dentro da janela de
       ±5 minutos (exige quebrar o TLS). O PUT /_federation/v1/send/{txn_id}
@@ -158,9 +180,15 @@ estado_de_implementacao:
       exibição
     - registo aberto, sem código de convite nem aprovação de admin
     - >
-      lista de conversas mostra todos os membros do servidor - sai na 0.3
-      (passa a só contactos aceites) e volta como opção no modo diretório
-      (ver modos_do_servidor)
+      qualquer pessoa pode receber pedidos por user@domínio (sem a opção
+      contacts_by_identifier nem convites de contacto - vêm na 0.3), e o
+      endpoint de perfil responde a qualquer servidor federado, por isso
+      confirma se uma conta existe
+    - >
+      o modo diretório é só um esqueleto - SERVER_MODE=directory devolve a
+      lista com todos os membros (com user_registered) e tira a barreira dos
+      contactos, mas ainda não há convites de admin nem ecrã de admin (ver
+      modos_do_servidor)
     - >
       conversa consigo próprio partida - get_or_create_conversation(a, a)
       devolve outra conversa do utilizador ou dá erro 500, e
@@ -182,8 +210,7 @@ estado_de_implementacao:
       nenhuma aos anteriores, sem partilha de histórico entre eles
     - federação (em curso, 0.2.0), grupos, figurinhas/GIFs, QR codes,
       notificações push
-    - convites (servidor e contacto), pedidos de contacto e fim da lista
-      global de utilizadores
+    - convites (servidor e contacto)
     - anexos cifrados (ver anexos_cifrados)
     - administração (papéis, moderação, ecrã de admin)
     - instalação com um comando (ver instalacao)
@@ -224,12 +251,15 @@ proxima_versao:
       depois de apagar a chave de A) - detalhe em
       estado_de_implementacao.construido
     F4: >
-      PRÓXIMA - perfil remoto, utilizadores-sombra, ecrã "Adicionar
-      contacto". Usa federation_request (app/federation/client.py) para
-      pedir o perfil ao outro servidor e a dependência federation_origin
-      (app/federation/auth.py) para o servidor que responde. Ambiente de
-      teste: bash dev/federation.sh num terminal e
-      backend/dev/federation-ping.sh a|b localhost:8002|8001 noutro
+      feita, falta verificar à mão - perfil remoto, utilizadores-sombra,
+      ecrã "Adicionar contacto", e contactos com pedidos e fim da lista
+      global (antecipados da 0.3, para o "Adicionar contacto" não assentar
+      em algo provisório). Os testes automáticos passam; falta a
+      verificação manual com os dois servidores de dev (dev/federation.sh:
+      dois utilizadores locais pedem/aceitam e conversam, e sem aceitar não
+      conseguem; em 8091 adicionar um utilizador de localhost:8002 e ele
+      aparece como pendente com o display_name de B) - detalhe em
+      estado_de_implementacao.construido
     F5: devices e prekey bundles remotos por proxy no servidor local
     F6: >
       entrega federada - federation_outbox + worker com backoff,
@@ -284,19 +314,17 @@ versao_1_0:
   caminho:
     '0.2':
       tema: federação (em curso, issue #19)
-      conteudo: ver proxima_versao
+      conteudo: >
+        ver proxima_versao. Os pedidos de contacto e o fim da lista global
+        vieram da 0.3 para a F4
     '0.3':
       tema: contactos e convites
       conteudo:
         - registo fechado por convite de servidor (QR / link / código)
         - convite de contacto com a chave de identidade - contacto verificado ao ler
         - >
-          pedidos de contacto - ninguém te manda mensagens antes de o
-          aceitares
-        - >
           adicionar por user@domínio, só se o admin ligar a opção
           (contactos_por_identificador, desligada por omissão)
-        - fim da lista global - a lista mostra só contactos aceites
         - número de segurança e verificação por QR (issue #3)
         - alcunhas e deteção de ambiguidade de nomes
     '0.4':
@@ -595,14 +623,15 @@ federacao:
     cifra no frontend não muda.
   endpoints:
     - GET  /_federation/v1/ping                           # {origin, server_name} - assinado, diagnóstico (F3)
-    - GET  /_federation/v1/users/{username}/profile       # {identifier, display_name}
+    - GET  /_federation/v1/users/{username}/profile       # {identifier, display_name} - só contas locais (F4)
     - GET  /_federation/v1/users/{username}/devices       # devices ativos com chaves
     - POST /_federation/v1/devices/{id}/prekey-bundle     # POST porque gasta uma OPK
     - PUT  /_federation/v1/send/{txn_id}                  # {events: [...]}
   eventos:
     duraveis: >
-      message e receipt - passam pela federation_outbox do lado de quem
-      envia (ver mensagens_entrega_e_estado.offline_federado)
+      message, receipt e pedido/aceitação de contacto - passam pela
+      federation_outbox do lado de quem envia (ver
+      mensagens_entrega_e_estado.offline_federado)
     efemeros: >
       typing e user_updated - uma tentativa, sem retry, nunca gravados
   validacao_no_recetor: >
@@ -633,6 +662,11 @@ papeis_e_administracao:
 
 modos_do_servidor:
   estado: na 1.0 só existe o modo privado; os outros ficam para a 1.x (futuro_1_x)
+  configuracao: >
+    SERVER_MODE=private (omissão) ou directory. O directory é um esqueleto
+    guardado de antes dos contactos - other_users da sessão com todos os
+    membros locais, user_registered no registo, user_updated para todos e
+    sem barreira de contactos. O aberto_efemero ainda não existe no código
   privado:
     padrao: true
     registo: só por convite
@@ -674,9 +708,19 @@ contactos:
       contactos_por_identificador (desligada por omissão). O contacto fica
       "por verificar" até se compararem os números de segurança.
   pedidos_de_outros_servidores: >
-    por decidir quando se implementar - proposta, a opção
-    contactos_por_identificador do NOSSO servidor também decide se aceitamos
-    pedidos por identificador vindos de fora
+    por decidir na F6, quando os pedidos começarem a viajar - proposta, a
+    opção contactos_por_identificador do NOSSO servidor também decide se
+    aceitamos pedidos por identificador vindos de fora
+  modelo_de_dados: >
+    tabela contacts [owner_id, contact_id (PK do par), status, created_at,
+    updated_at], uma linha por lado - cada servidor só guarda o lado dos
+    seus utilizadores locais, por isso um contacto remoto funciona como um
+    local. status é pending_outgoing (eu pedi), pending_incoming (pediram-me)
+    ou accepted. Pedir a quem já te pediu aceita os dois. Recusar apaga só a
+    minha linha (quem pediu continua a ver pendente), cancelar apaga as duas,
+    e remover um contacto aceite põe o outro lado de novo em
+    pending_outgoing. As conversas exigem accepted dos dois lados (num
+    contacto remoto, só o nosso - o dele vive no servidor dele)
   mudanca_de_chave: aviso bem visível na conversa e no detalhe do contacto; o contacto volta a "por verificar"
 
 identidade_e_nomes:

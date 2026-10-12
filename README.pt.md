@@ -61,7 +61,7 @@ opção por omissão é a mais privada.
 | Versão | Tema |
 |---|---|
 | **0.2** | Federação entre servidores (em curso) |
-| **0.3** | Contactos e convites: registo só por convite, convites de servidor e de contacto (QR, link ou código), pedidos de contacto, fim da lista com todos os membros, números de segurança |
+| **0.3** | Contactos e convites: registo só por convite, convites de servidor e de contacto (QR, link ou código), números de segurança (os pedidos de contacto já vieram na 0.2) |
 | **0.4** | Cifra endurecida e dispositivos: dados protegidos no dispositivo, ecrã "Os meus dispositivos", bloqueio da app |
 | **0.5** | Anexos cifrados (sem EXIF, com padding, sem deduplicação) e conversa consigo próprio |
 | **0.6** | Servidor pronto para outras pessoas: instalação com um comando, administração mínima, definições de privacidade |
@@ -210,9 +210,18 @@ sem nunca a aceitar sozinho.
 - Todos os pedidos e o WebSocket exigem esse token. O servidor tira dele
   quem és e só guarda o hash, e só quem está numa conversa consegue enviar
   para ela ou ver os dispositivos dela.
-- A lista de conversas mostra todos os outros utilizadores já registados
-  no servidor, mesmo sem histórico nenhum entre vocês.
-- Tocar num utilizador cria a conversa (se ainda não existir) e abre o chat.
+- **Contactos com pedidos:** o botão + abre o "Adicionar contacto", onde
+  escreves `user@domínio` (ou só o nome de utilizador, para este servidor).
+  A outra pessoa vê o pedido em "Pedidos" e aceita ou recusa; ninguém te
+  escreve antes de aceitares, e uma recusa nunca é revelada. A lista de
+  conversas só mostra contactos aceites.
+- **Perfis remotos:** adicionar alguém de outro servidor faz o nosso pedir
+  o perfil ao dele (pedido assinado) e guardá-lo como utilizador-sombra. O
+  pedido de contacto em si só chega ao outro servidor com a entrega
+  federada (F6).
+- `SERVER_MODE=directory` volta a mostrar a lista antiga com todos os
+  membros do servidor e sem pedidos (esqueleto do futuro modo diretório).
+- Tocar num contacto cria a conversa (se ainda não existir) e abre o chat.
 - Mensagens de texto em tempo real via WebSocket, entre quantos
   utilizadores/dispositivos estiverem ligados.
 - **Cifra ponta-a-ponta:** cada dispositivo publica as suas chaves ao
@@ -220,7 +229,7 @@ sem nunca a aceitar sozinho.
   daí em diante cada mensagem usa uma chave nova (Double Ratchet). Quem
   envia cifra um envelope por cada dispositivo do destinatário; o
   servidor entrega a cada um só o seu e nunca vê o texto.
-- A lista atualiza-se sozinha quando alguém novo se regista, sem refresh.
+- Pedidos, aceitações e mudanças de nome aparecem sozinhos, sem refresh.
 - **Lista de conversas viva:** cada conversa mostra a última mensagem, a
   hora ("14:32", "Ontem", "Ter") e quantas estão por ler; a que recebeu ou
   enviou a mensagem mais recente sobe para o topo. Na web, o separador do
@@ -279,8 +288,8 @@ sem nunca a aceitar sozinho.
 - **Um só dispositivo por utilizador**, sem multi-dispositivo a sério.
 - **Sem federação** (em curso, ver acima): só conversas dentro do mesmo
   servidor.
-- **Registo aberto**, sem código de convite nem aprovação de admin, e a
-  lista de conversas mostra todos os membros do servidor. Muda na 0.3.
+- **Registo aberto**, sem código de convite nem aprovação de admin, e
+  qualquer pessoa pode receber pedidos por `user@domínio`. Muda na 0.3.
 - **Conversa consigo próprio não funciona** ainda. Resolve-se na 0.5.
 - **Só localhost/rede local.** Testado só dentro de casa; ver
   `Documents/projeto-chat-selfhosted.yaml` para o desenho de produção

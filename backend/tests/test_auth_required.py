@@ -80,7 +80,7 @@ def test_recipient_devices_of_a_foreign_conversation_is_not_found() -> None:
     assert response.status_code == 404
 
 
-def test_conversation_with_unknown_user_is_not_found() -> None:
+def test_conversation_with_unknown_user_is_refused() -> None:
     alice = register()
 
     response = client.post(
@@ -89,7 +89,7 @@ def test_conversation_with_unknown_user_is_not_found() -> None:
         json={"other_user_id": str(uuid.uuid4())},
     )
 
-    assert response.status_code == 404
+    assert response.status_code == 403
 
 
 def _assert_closed_unauthorized(websocket: Any) -> None:
@@ -147,8 +147,6 @@ def test_outsider_cannot_message_type_or_send_receipts_in_a_foreign_conversation
                 ],
             }
         )
-        # O "sent" só chega depois de a mensagem do Mallory ter sido tratada, e
-        # o socket processa por ordem - quando chega, as três já foram.
         mallory_ws.send_json(outgoing(alice_bob, envelope(bob["device_id"], 8)))
         assert mallory_ws.receive_json()["type"] == "sent"
         assert mallory_ws.receive_json()["type"] == "sent"

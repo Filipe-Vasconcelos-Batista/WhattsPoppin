@@ -59,7 +59,7 @@ another server, with no security simplification left. The focus is
 | Version | Theme |
 |---|---|
 | **0.2** | Federation between servers (in progress) |
-| **0.3** | Contacts and invites: invite-only registration, server and contact invites (QR, link or code), contact requests, no more list of every member, safety numbers |
+| **0.3** | Contacts and invites: invite-only registration, server and contact invites (QR, link or code), safety numbers (contact requests already came in 0.2) |
 | **0.4** | Hardened encryption and devices: data protected on the device, "My devices" screen, app lock |
 | **0.5** | Encrypted attachments (no EXIF, padded, no deduplication) and conversation with yourself |
 | **0.6** | A server ready for other people: one-command installation, minimal administration, privacy settings |
@@ -209,9 +209,18 @@ never accepting it on its own.
 - Every request and the WebSocket require that token. The server works out
   who you are from it and only stores its hash, and only the participants
   of a conversation can send to it or see its devices.
-- The conversation list shows every other user already registered on the
-  server, even with no history between you.
-- Tapping a user creates the conversation (if it doesn't exist yet) and
+- **Contacts with requests:** the + button opens "Add contact", where you
+  type `user@domain` (or just the username, for this server). The other
+  person sees the request in "Requests" and accepts or declines; nobody can
+  message you before you accept, and a decline is never revealed. The
+  conversation list only shows accepted contacts.
+- **Remote profiles:** adding someone from another server makes ours ask
+  theirs for the profile (a signed request) and keep it as a shadow user.
+  The request itself only reaches the other server with federated delivery
+  (F6).
+- `SERVER_MODE=directory` brings back the old list with every member of
+  the server and no requests (a skeleton of the future directory mode).
+- Tapping a contact creates the conversation (if it doesn't exist yet) and
   opens the chat.
 - Real-time text messages over WebSocket, between however many
   users/devices are connected.
@@ -220,7 +229,8 @@ never accepting it on its own.
   uses a new key (Double Ratchet). The sender encrypts one envelope per
   recipient device; the server delivers to each only its own and never sees
   the text.
-- The list updates by itself when someone new signs up, no refresh.
+- Requests, acceptances and name changes show up by themselves, no
+  refresh.
 - **Live conversation list:** each conversation shows the last message, the
   time ("14:32", "Yesterday", "Tue") and how many are unread; the one that
   received or sent the most recent message moves to the top. On the web,
@@ -278,8 +288,8 @@ never accepting it on its own.
 - **A single device per user**, no real multi-device.
 - **No federation** (in progress, see above): conversations only within the
   same server.
-- **Open registration**, with no invite code or admin approval, and the
-  conversation list shows every member of the server. Changes in 0.3.
+- **Open registration**, with no invite code or admin approval, and anyone
+  can be sent a request by `user@domain`. Changes in 0.3.
 - **Conversation with yourself doesn't work** yet. Fixed in 0.5.
 - **Localhost/local network only.** Tested only at home; see
   `Documents/project-chat-selfhosted.yaml` for the production design

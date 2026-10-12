@@ -13,11 +13,14 @@ DATABASE_URL = os.environ.get(
 
 SERVER_NAME = os.environ.get("SERVER_NAME", "localhost:8000").strip().lower()
 
-# Fora da BD de propósito: um dump roubado não chega para alguém se fazer
-# passar pelo servidor. Um caminho relativo conta a partir de onde o uvicorn corre.
 SERVER_SIGNING_KEY_PATH = Path(
     os.environ.get("SERVER_SIGNING_KEY_PATH", str(BACKEND_DIR / "data" / "signing.key"))
 )
 
-# Só os .env de dev o ligam; em produção a federação exige HTTPS.
+SERVER_MODE_PRIVATE = "private"
+SERVER_MODE_DIRECTORY = "directory"
+SERVER_MODE = os.environ.get("SERVER_MODE", SERVER_MODE_PRIVATE).strip().lower()
+if SERVER_MODE not in (SERVER_MODE_PRIVATE, SERVER_MODE_DIRECTORY):
+    raise RuntimeError(f"SERVER_MODE inválido: {SERVER_MODE!r} (private ou directory)")
+
 FEDERATION_ALLOW_HTTP = os.environ.get("FEDERATION_ALLOW_HTTP", "false").strip().lower() == "true"

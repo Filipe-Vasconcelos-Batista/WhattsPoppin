@@ -89,12 +89,34 @@ implementation_status:
       bytes it sends; backend/dev/federation-ping.sh a localhost:8002 tests
       it by hand. FEDERATION_ALLOW_HTTP=true, only in the dev .env files,
       allows http:// for .well-known and for requests
-    - the conversation list shows every user on the server; a conversation
-      is only created in the DB the first time it is opened (get_or_create,
-      not pre-created on sign-up)
+    - >
+      contacts with requests and remote profiles (F4 of 0.2.0, brought
+      forward from 0.3; automated tests done, manual check with the two dev
+      servers pending) - contacts table (migration 009), one row per side
+      with status pending_outgoing / pending_incoming / accepted. "Add
+      contact" (+ button in the list) takes user@domain, or just the
+      username for this server, and POST /contacts creates the request;
+      asking someone who already asked you accepts both. GET /contacts,
+      POST /contacts/{user_id}/accept and DELETE /contacts/{user_id}
+      (decline, cancel or remove). Declining is never revealed - the
+      requester keeps seeing "pending"; removing an accepted contact puts
+      the other side back to pending. Both sides are told over the
+      WebSocket (contact_updated / contact_removed), and the name change
+      (user_updated) only reaches whoever has you in their list. Nobody
+      can message you before you accept - POST /conversations/with answers
+      403 without an accepted contact on both sides, and messages,
+      receipts and "typing" stop going to someone who stopped being a
+      contact, even in an old conversation. For user@another-server, our
+      server asks the other for the profile with
+      GET /_federation/v1/users/{username}/profile (signed, answered only
+      for local accounts), checks that the identifier that came back is the
+      one asked for, and keeps it as a shadow user (users row with the
+      domain, empty password_hash, display_name refreshed on every add -
+      it cannot log in). A remote request stays pending_outgoing on our
+      side only; it reaches the other server with federated delivery (F6)
+    - a conversation is only created in the DB the first time it is opened
+      (get_or_create, not pre-created on sign-up)
     - real-time 1:1 text messages over WebSocket
-    - the list updates by itself when someone new signs up (user_registered
-      event), no refresh
     - the WebSocket reconnects by itself if the backend goes down/restarts
     - messages persist on the device (AsyncStorage/localStorage) per user,
       and survive a page refresh
@@ -145,10 +167,10 @@ implementation_status:
     - encryption only in 1:1 and with known rough edges - simultaneous
       session starts may lose the messages that cross (no session archive),
       no SPK rotation, no automatic OPK replenishment
-    - no real federation - there is a user@domain identifier and a server
-      identity (key, .well-known, signed requests, TOFU), but the servers
-      don't exchange profiles, keys or messages yet (F4-F7 of 0.2.0, see
-      next_version)
+    - no real federation yet - there is a user@domain identifier, a server
+      identity (key, .well-known, signed requests, TOFU) and remote profiles
+      (shadow users), but the servers don't exchange keys, contact requests
+      or messages yet (F5-F7 of 0.2.0, see next_version)
     - >
       a captured federated request can be replayed within the ±5 minute
       window (it requires breaking TLS). The F6 PUT /_federation/v1/send/{txn_id}
@@ -165,9 +187,14 @@ implementation_status:
     - no nicknames or ambiguity detection - the display name is always shown
     - open registration, no invite code or admin approval
     - >
-      the conversation list shows every member of the server - goes away in
-      0.3 (only accepted contacts) and comes back as an option in directory
-      mode (see server_modes)
+      anyone can be asked by user@domain (no contacts_by_identifier option,
+      no contact invites yet - both come in 0.3), and the profile endpoint
+      answers any federated server, so it confirms whether an account exists
+    - >
+      the directory mode is only a skeleton - SERVER_MODE=directory brings
+      back the list of every member (user_registered included) and lifts the
+      contacts barrier, but there are no admin invites or admin screen yet
+      (see server_modes)
     - >
       conversation with yourself is broken - get_or_create_conversation(a, a)
       returns another of the user's conversations or fails with a 500, and
@@ -189,8 +216,7 @@ implementation_status:
       the previous ones, and no history sharing between them
     - federation (in progress, 0.2.0), groups, stickers/GIFs, QR codes, push
       notifications
-    - invites (server and contact), contact requests and the end of the
-      global user list
+    - invites (server and contact)
     - encrypted attachments (see encrypted_attachments)
     - administration (roles, moderation, admin screen)
     - one-command installation (see installation)
@@ -230,12 +256,14 @@ next_version:
       and the refusal with a changed key after deleting A's key) - details in
       implementation_status.built
     F4: >
-      NEXT - remote profile, shadow users, "Add contact" screen. Uses
-      federation_request (app/federation/client.py) to ask the other server
-      for the profile and the federation_origin dependency
-      (app/federation/auth.py) on the answering server. Test environment:
-      bash dev/federation.sh in one terminal and
-      backend/dev/federation-ping.sh a|b localhost:8002|8001 in another
+      done, not yet verified by hand - remote profile, shadow users, "Add
+      contact" screen, and contacts with requests and the end of the global
+      list (brought forward from 0.3, so "Add contact" is not built on
+      something temporary). Automated tests pass; the manual check with the
+      two dev servers is missing (dev/federation.sh: two local users
+      ask/accept and talk, and without accepting they cannot; on 8091 add
+      a user from localhost:8002 and they show up as pending with B's
+      display_name) - details in implementation_status.built
     F5: remote devices and prekey bundles proxied through the local server
     F6: >
       federated delivery - federation_outbox + worker with backoff,
@@ -290,18 +318,17 @@ version_1_0:
   path:
     '0.2':
       theme: federation (in progress, issue #19)
-      content: see next_version
+      content: >
+        see next_version. Contact requests and the end of the global list
+        came forward from 0.3 into F4
     '0.3':
       theme: contacts and invites
       content:
         - registration closed behind a server invite (QR / link / code)
         - contact invite carrying the identity key - the contact is verified when scanned
         - >
-          contact requests - nobody can message you before you accept
-        - >
           add by user@domain, only if the admin turns the option on
           (contacts_by_identifier, off by default)
-        - end of the global list - the list only shows accepted contacts
         - safety number and QR verification (issue #3)
         - nicknames and name ambiguity detection
     '0.4':
@@ -601,13 +628,14 @@ federation:
     servers, and the encryption in the frontend doesn't change.
   endpoints:
     - GET  /_federation/v1/ping                           # {origin, server_name} - signed, diagnostic (F3)
-    - GET  /_federation/v1/users/{username}/profile       # {identifier, display_name}
+    - GET  /_federation/v1/users/{username}/profile       # {identifier, display_name} - local accounts only (F4)
     - GET  /_federation/v1/users/{username}/devices       # active devices with keys
     - POST /_federation/v1/devices/{id}/prekey-bundle     # POST because it spends an OPK
     - PUT  /_federation/v1/send/{txn_id}                  # {events: [...]}
   events:
     durable: >
-      message and receipt - go through the sender's federation_outbox (see
+      message, receipt and contact request/acceptance - go through the
+      sender's federation_outbox (see
       message_delivery_and_state.offline_federated)
     ephemeral: >
       typing and user_updated - a single attempt, no retry, never stored
@@ -639,6 +667,11 @@ roles_and_administration:
 
 server_modes:
   status: 1.0 only has the private mode; the others are left for 1.x (future_1_x)
+  configuration: >
+    SERVER_MODE=private (default) or directory. directory is a skeleton kept
+    from before contacts - session other_users with every local member,
+    user_registered on sign-up, user_updated to everyone and no contacts
+    barrier. open_ephemeral does not exist in the code yet
   private:
     default: true
     registration: by invite only
@@ -680,9 +713,19 @@ contacts:
       contacts_by_identifier (off by default). The contact stays
       "unverified" until the safety numbers are compared.
   requests_from_other_servers: >
-    to be decided at implementation time - proposal, OUR server's
-    contacts_by_identifier option also decides whether we accept
+    to be decided in F6, when requests start travelling - proposal, OUR
+    server's contacts_by_identifier option also decides whether we accept
     by-identifier requests coming from outside
+  data_model: >
+    contacts table [owner_id, contact_id (PK pair), status, created_at,
+    updated_at], one row per side - each server only keeps the side of its
+    local users, so a remote contact works like a local one. status is
+    pending_outgoing (I asked), pending_incoming (they asked) or accepted.
+    Asking someone who already asked accepts both. Declining deletes only my
+    row (the requester keeps seeing pending), cancelling deletes both, and
+    removing an accepted contact puts the other side back to
+    pending_outgoing. Conversations need accepted on both sides (for a
+    remote contact, only ours - theirs lives on their server)
   key_change: a clearly visible warning in the conversation and in the contact details; the contact goes back to "unverified"
 
 identity_and_names:
