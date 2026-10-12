@@ -229,7 +229,13 @@ next_version:
       the two dev servers are done (federation-ping.sh in both directions,
       and the refusal with a changed key after deleting A's key) - details in
       implementation_status.built
-    F4: remote profile, shadow users, "Add contact" screen
+    F4: >
+      NEXT - remote profile, shadow users, "Add contact" screen. Uses
+      federation_request (app/federation/client.py) to ask the other server
+      for the profile and the federation_origin dependency
+      (app/federation/auth.py) on the answering server. Test environment:
+      bash dev/federation.sh in one terminal and
+      backend/dev/federation-ping.sh a|b localhost:8002|8001 in another
     F5: remote devices and prekey bundles proxied through the local server
     F6: >
       federated delivery - federation_outbox + worker with backoff,

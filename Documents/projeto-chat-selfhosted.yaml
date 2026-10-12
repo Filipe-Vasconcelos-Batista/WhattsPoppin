@@ -223,7 +223,13 @@ proxima_versao:
       (federation-ping.sh nos dois sentidos, e recusa com a chave mudada
       depois de apagar a chave de A) - detalhe em
       estado_de_implementacao.construido
-    F4: perfil remoto, utilizadores-sombra, ecrã "Adicionar contacto"
+    F4: >
+      PRÓXIMA - perfil remoto, utilizadores-sombra, ecrã "Adicionar
+      contacto". Usa federation_request (app/federation/client.py) para
+      pedir o perfil ao outro servidor e a dependência federation_origin
+      (app/federation/auth.py) para o servidor que responde. Ambiente de
+      teste: bash dev/federation.sh num terminal e
+      backend/dev/federation-ping.sh a|b localhost:8002|8001 noutro
     F5: devices e prekey bundles remotos por proxy no servidor local
     F6: >
       entrega federada - federation_outbox + worker com backoff,
