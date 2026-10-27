@@ -262,7 +262,45 @@ proxima_versao:
       continua a recusá-lo (401) até se apagar lá a linha dele em
       federated_servers - a única forma até haver ecrã de admin - detalhe em
       estado_de_implementacao.construido
-    F5: devices e prekey bundles remotos por proxy no servidor local
+    F5: >
+      PRÓXIMA - devices e prekey bundles remotos por proxy no servidor
+      local, para o cliente continuar a falar só com o seu servidor e a
+      cifra no frontend não mudar. Plano -
+      (1) lado que responde, com federation_origin, só para contas e devices
+      locais: GET /_federation/v1/users/{username}/devices -> {identifier,
+      devices: [{device_id, identity_key, signed_prekey,
+      signed_prekey_signature, signed_prekey_id}]} (devices ativos com
+      chaves) e POST /_federation/v1/devices/{device_id}/prekey-bundle -> o
+      bundle mais o identificador do dono, reutilizando get_prekey_bundle
+      (gasta uma OPK).
+      (2) devices-sombra - linhas em devices com o device_id remoto, o
+      utilizador-sombra, token_hash NULL e só chaves públicas (sem
+      migração). Sincronizados a cada pedido - upsert, e os que
+      desapareceram passam a is_active false. Um device_id que já pertença a
+      outro utilizador ou domínio é recusado (fica no log e é ignorado).
+      (3) proxy nos endpoints locais - GET /conversations/{id}/devices
+      atualiza os devices dos participantes remotos junto do servidor deles
+      (se falhar, usa os devices-sombra guardados) e GET
+      /devices/{id}/prekey-bundle de um device-sombra pede ao servidor dele
+      com POST. Se a identity_key que vier for diferente da guardada, é
+      recusado e fica no log (o aviso de chave mudada vem com os números de
+      segurança na 0.3). Só faz proxy para quem tem o dono como contacto
+      aceite, para o nosso servidor não servir para esgotar as OPKs de
+      outros.
+      (4) os envelopes para devices-sombra são ignorados pelo WebSocket na
+      F5 - a F6 manda-os pela federation_outbox.
+      (5) testes - lado que responde com TestClient e FakeRemote, de saída
+      com MockTransport (sincronização, desativação, device_id alheio,
+      identity_key mudada, servidor em baixo a usar o que está guardado,
+      proxy recusado sem contacto); o contacto remoto aceite cria-se direto
+      no serviço, porque a aceitação só viaja na F6.
+      (6) verificação manual - o federation-ping.sh passa a um script que
+      envia qualquer pedido assinado (método + caminho), para pedir de A a B
+      os devices do bob e um bundle. A verificação ponta-a-ponta pela UI só
+      é possível na F6, quando os pedidos e aceitações viajarem. Limitação a
+      registar - o lado que responde ainda não consegue verificar contactos
+      (também vem na F6), por isso qualquer servidor federado pode listar
+      devices e gastar OPKs; o rate limiting vem com o deploy com HTTPS
     F6: >
       entrega federada - federation_outbox + worker com backoff,
       PUT /_federation/v1/send/{txn_id}, recibos delivered/read entre servidores
