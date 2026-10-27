@@ -2,7 +2,8 @@ import uuid
 from dataclasses import dataclass
 
 from app.db import db
-from app.models import Device, OneTimePrekey
+from app.models import Device, OneTimePrekey, User
+from app.services.identifiers import format_identifier, normalize_username
 
 
 class DeviceNotFoundError(Exception):
@@ -74,3 +75,57 @@ def get_prekey_bundle(device_id: uuid.UUID) -> PrekeyBundle | None:
         one_time_prekey_id=one_time_prekey_id,
         one_time_prekey=one_time_prekey,
     )
+
+
+@dataclass
+class DeviceKeys:
+    device_id: uuid.UUID
+    identity_key: bytes
+    signed_prekey: bytes
+    signed_prekey_signature: bytes
+    signed_prekey_id: int
+
+
+def local_devices_with_keys(username: str) -> tuple[str, list[DeviceKeys]] | None:
+    user = User.get_or_none(User.username == normalize_username(username), User.domain.is_null())
+    if user is None:
+        return None
+    devices = Device.select().where(
+        Device.user == user.id,
+        Device.is_active == True,  # noqa: E712
+        Device.identity_key.is_null(False),
+    )
+    keys = [_keys_of(device) for device in devices]
+    return format_identifier(user.username, None), [key for key in keys if key is not None]
+
+
+def _keys_of(device: Device) -> DeviceKeys | None:
+    if (
+        device.identity_key is None
+        or device.signed_prekey is None
+        or device.signed_prekey_signature is None
+        or device.signed_prekey_id is None
+    ):
+        return None
+    return DeviceKeys(
+        device_id=device.id,
+        identity_key=bytes(device.identity_key),
+        signed_prekey=bytes(device.signed_prekey),
+        signed_prekey_signature=bytes(device.signed_prekey_signature),
+        signed_prekey_id=device.signed_prekey_id,
+    )
+
+
+def local_device_owner(device_id: uuid.UUID) -> str | None:
+    device = (
+        Device.select(Device, User)
+        .join(User)
+        .where(
+            Device.id == device_id,
+            Device.is_active == True,  # noqa: E712
+            Device.identity_key.is_null(False),
+            User.domain.is_null(),
+        )
+        .first()
+    )
+    return None if device is None else format_identifier(device.user.username, None)

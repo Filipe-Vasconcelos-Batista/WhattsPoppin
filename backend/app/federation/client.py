@@ -18,6 +18,10 @@ class FederationRequestError(Exception):
     pass
 
 
+class FederationNotFoundError(FederationRequestError):
+    pass
+
+
 async def federation_request(
     destination: str, method: str, path: str, json: Any = None
 ) -> httpx2.Response:
@@ -54,3 +58,24 @@ async def federation_request(
         raise FederationRequestError(
             f"não foi possível contactar {destination}: {error!r}"
         ) from error
+
+
+async def federation_json(
+    destination: str, method: str, path: str, json: Any = None
+) -> dict[str, Any]:
+    response = await federation_request(destination, method, path, json)
+    match response.status_code:
+        case 200:
+            pass
+        case 404:
+            raise FederationNotFoundError(f"{destination} respondeu 404 a {method} {path}")
+        case status:
+            raise FederationRequestError(f"{destination} respondeu {status} a {method} {path}")
+
+    try:
+        data = response.json()
+    except ValueError as error:
+        raise FederationRequestError(f"{destination} respondeu com algo que não é JSON") from error
+    if not isinstance(data, dict):
+        raise FederationRequestError(f"{destination} respondeu com algo que não é um objeto")
+    return data

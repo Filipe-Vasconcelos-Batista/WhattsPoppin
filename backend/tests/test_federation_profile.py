@@ -137,6 +137,16 @@ def test_malformed_profiles_are_refused(other_server: RemoteProfiles, body: Any)
     assert _add(alice, f"bob@{other_server.domain}").status_code == 502
 
 
+def test_the_reason_for_a_bad_gateway_is_logged(
+    other_server: RemoteProfiles, caplog: pytest.LogCaptureFixture
+) -> None:
+    alice = register()
+    other_server.status = 500
+
+    assert _add(alice, f"bob@{other_server.domain}").status_code == 502
+    assert f"{other_server.domain} respondeu 500" in caplog.text
+
+
 def test_unknown_remote_user_is_not_found(other_server: RemoteProfiles) -> None:
     alice = register()
     other_server.status = 404

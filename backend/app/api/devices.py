@@ -6,7 +6,17 @@ from pydantic import BaseModel
 
 from app.api.deps import CurrentIdentity
 from app.db.sync import run_sync
-from app.services.keys import DeviceNotFoundError, get_prekey_bundle, publish_keys
+from app.services.auth import Identity
+from app.services.contacts import are_contacts
+from app.services.keys import DeviceNotFoundError, PrekeyBundle, get_prekey_bundle, publish_keys
+from app.services.remote_devices import (
+    IdentityKeyChangedError,
+    RemoteDeviceError,
+    RemoteDeviceNotFoundError,
+    ShadowDevice,
+    fetch_remote_bundle,
+    shadow_device,
+)
 
 router = APIRouter()
 
@@ -57,13 +67,7 @@ async def publish_keys_endpoint(
         raise HTTPException(status_code=404, detail="Device não encontrado") from exc
 
 
-@router.get("/devices/{device_id}/prekey-bundle", response_model=PrekeyBundleResponse)
-async def prekey_bundle_endpoint(
-    device_id: uuid.UUID, identity: CurrentIdentity
-) -> PrekeyBundleResponse:
-    bundle = await run_sync(get_prekey_bundle, device_id)
-    if bundle is None:
-        raise HTTPException(status_code=404, detail="Device não encontrado")
+def bundle_response(bundle: PrekeyBundle) -> PrekeyBundleResponse:
     return PrekeyBundleResponse(
         identity_key=_b64_or_none(bundle.identity_key),
         signed_prekey=_b64_or_none(bundle.signed_prekey),
@@ -72,3 +76,34 @@ async def prekey_bundle_endpoint(
         one_time_prekey_id=bundle.one_time_prekey_id,
         one_time_prekey=_b64_or_none(bundle.one_time_prekey),
     )
+
+
+async def _remote_bundle(shadow: ShadowDevice, identity: Identity) -> PrekeyBundle:
+    if not await run_sync(are_contacts, identity.user_id, shadow.owner_id):
+        raise HTTPException(status_code=403, detail="Só podes cifrar para contactos aceites")
+    try:
+        return await fetch_remote_bundle(shadow)
+    except RemoteDeviceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Device não encontrado") from exc
+    except IdentityKeyChangedError as exc:
+        raise HTTPException(
+            status_code=409, detail="A chave de identidade deste device mudou"
+        ) from exc
+    except RemoteDeviceError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"Não foi possível contactar o servidor {shadow.domain}"
+        ) from exc
+
+
+@router.get("/devices/{device_id}/prekey-bundle", response_model=PrekeyBundleResponse)
+async def prekey_bundle_endpoint(
+    device_id: uuid.UUID, identity: CurrentIdentity
+) -> PrekeyBundleResponse:
+    shadow = await run_sync(shadow_device, device_id)
+    if shadow is not None:
+        return bundle_response(await _remote_bundle(shadow, identity))
+
+    bundle = await run_sync(get_prekey_bundle, device_id)
+    if bundle is None:
+        raise HTTPException(status_code=404, detail="Device não encontrado")
+    return bundle_response(bundle)

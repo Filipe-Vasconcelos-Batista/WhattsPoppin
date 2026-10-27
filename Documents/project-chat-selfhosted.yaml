@@ -114,6 +114,35 @@ implementation_status:
       domain, empty password_hash, display_name refreshed on every add -
       it cannot log in). A remote request stays pending_outgoing on our
       side only; it reaches the other server with federated delivery (F6)
+    - >
+      remote devices and prekey bundles proxied through the local server
+      (F5 of 0.2.0; checked by hand with the two dev servers) - the client
+      still talks only to its own server and the
+      frontend encryption doesn't change. On the answering side (signed,
+      only for local accounts and devices), GET
+      /_federation/v1/users/{username}/devices returns {identifier, devices}
+      with the active devices that have keys, and POST
+      /_federation/v1/devices/{device_id}/prekey-bundle returns the bundle
+      plus the owner's identifier (spends an OPK). On our side
+      (app/services/remote_devices.py), a remote contact's devices are kept
+      as shadow devices - rows in devices with their device_id, the shadow
+      user, token_hash NULL and public keys only (no migration). GET
+      /conversations/{id}/devices refreshes them from their server on every
+      call (devices that disappeared become is_active false; if the server
+      doesn't answer, the last ones stay) and GET /devices/{id}/prekey-bundle
+      for a shadow device asks their server for the bundle (a 404 there
+      deactivates the device here). It only proxies for whoever has the
+      owner as an accepted contact (403 on the bundle), so our server cannot
+      be used to spend other people's OPKs. Refused and logged - a device_id
+      that already belongs to another user, more than 50 devices (the
+      maximum envelopes per message), and an identity_key different from
+      the stored one (on sync the old one stays; on the bundle, 409).
+      Devices from other servers are left out of find_recipient_device_ids
+      by default, so messages, receipts and "typing" for them don't go into
+      the local queue - they travel over federation in F6/F7. The reason for
+      a 502 when contacting another server (profile, devices or bundle) is
+      logged with logger.warning. backend/dev/federation-ping.sh now takes a
+      method and path to send any signed request
     - a conversation is only created in the DB the first time it is opened
       (get_or_create, not pre-created on sign-up)
     - real-time 1:1 text messages over WebSocket
@@ -168,9 +197,10 @@ implementation_status:
       session starts may lose the messages that cross (no session archive),
       no SPK rotation, no automatic OPK replenishment
     - no real federation yet - there is a user@domain identifier, a server
-      identity (key, .well-known, signed requests, TOFU) and remote profiles
-      (shadow users), but the servers don't exchange keys, contact requests
-      or messages yet (F5-F7 of 0.2.0, see next_version)
+      identity (key, .well-known, signed requests, TOFU), remote profiles
+      (shadow users) and remote devices and bundles by proxy, but the
+      servers don't exchange contact requests or messages yet (F6-F7 of
+      0.2.0, see next_version)
     - >
       a captured federated request can be replayed within the ±5 minute
       window (it requires breaking TLS). The F6 PUT /_federation/v1/send/{txn_id}
@@ -190,6 +220,13 @@ implementation_status:
       anyone can be asked by user@domain (no contacts_by_identifier option,
       no contact invites yet - both come in 0.3), and the profile endpoint
       answers any federated server, so it confirms whether an account exists
+    - >
+      the federated devices and bundle endpoints don't check contacts yet
+      (the answering side only knows them once requests and acceptances
+      travel, in F6), so any federated server can list an account's devices
+      and spend its OPKs; rate limiting comes with the HTTPS deployment. A
+      changed identity_key on a remote device is only logged - warning the
+      user comes with safety numbers (0.3)
     - >
       the directory mode is only a skeleton - SERVER_MODE=directory brings
       back the list of every member (user_registered included) and lifts the
@@ -268,45 +305,18 @@ next_version:
       federated_servers is deleted there - the only way until the admin
       screen - details in implementation_status.built
     F5: >
-      NEXT - remote devices and prekey bundles proxied through the local
-      server, so the client keeps talking only to its own server and the
-      frontend encryption doesn't change. Plan -
-      (1) answering side, with federation_origin, only for local accounts
-      and devices: GET /_federation/v1/users/{username}/devices ->
-      {identifier, devices: [{device_id, identity_key, signed_prekey,
-      signed_prekey_signature, signed_prekey_id}]} (active devices with
-      keys) and POST /_federation/v1/devices/{device_id}/prekey-bundle ->
-      the bundle plus the owner's identifier, reusing get_prekey_bundle
-      (spends an OPK).
-      (2) shadow devices - rows in devices with the remote device_id, the
-      shadow user, token_hash NULL and public keys only (no migration
-      needed). Synced on every fetch - upsert, and devices that disappeared
-      become is_active false. A device_id that already belongs to another
-      user or domain is refused (logged and ignored).
-      (3) proxy on the local endpoints - GET /conversations/{id}/devices
-      refreshes the remote participants' devices from their server (on
-      failure, uses the cached shadow devices) and GET
-      /devices/{id}/prekey-bundle for a shadow device asks its server with
-      POST. If the identity_key that comes back differs from the stored one
-      it is refused and logged (the key-change warning comes with safety
-      numbers in 0.3). Only proxies to whoever has the owner as an accepted
-      contact, so our server cannot be used to drain someone else's OPKs.
-      (4) envelopes for shadow devices are ignored by the WebSocket in F5 -
-      F6 sends them through federation_outbox.
-      (5) tests - answering side with TestClient and FakeRemote, outgoing
-      with MockTransport (sync, deactivation, foreign device_id, changed
-      identity_key, unreachable server using the cache, proxy refused
-      without a contact); the accepted remote contact is created directly
-      in the service, because acceptance only travels in F6.
-      (6) manual check - federation-ping.sh grows into a script that sends
-      any signed request (method + path), to fetch bob's devices and a
-      bundle from A to B. The end-to-end check through the UI is only
-      possible in F6, when requests and acceptances travel. Known
-      limitation to record - the answering side cannot check contacts yet
-      (that also comes in F6), so any federated server can list devices and
-      spend OPKs; rate limiting comes with the HTTPS deployment
+      done - remote devices and prekey bundles proxied through the local
+      server, shadow devices, and the reason for 502s between servers in the
+      log (details in implementation_status.built). Automated tests (ruff,
+      mypy and pytest) and the manual check with the two dev servers are
+      done - with bash dev/federation.sh and bob logged in on 8092, from A
+      backend/dev/federation-ping.sh a localhost:8002 GET
+      /_federation/v1/users/bob/devices returns his devices with their keys,
+      and POST /_federation/v1/devices/<device_id>/prekey-bundle the bundle
+      with the same identity_key and an OPK. The proxy can only be seen
+      through the UI in F6, when requests and acceptances travel
     F6: >
-      federated delivery - federation_outbox + worker with backoff,
+      NEXT - federated delivery - federation_outbox + worker with backoff,
       PUT /_federation/v1/send/{txn_id}, delivered/read receipts across servers
     F7: >
       "typing" and name changes across servers (ephemeral, no retry)

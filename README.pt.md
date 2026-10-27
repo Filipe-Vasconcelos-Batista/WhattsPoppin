@@ -200,6 +200,19 @@ repete o ping do A ao B. O B recusa com 401, regista um aviso no log e marca a
 chave nova na BD (`changed_key`, `key_changed_at` em `federated_servers`),
 sem nunca a aceitar sozinho.
 
+O mesmo script envia qualquer pedido assinado se lhe juntares um método e um
+caminho. Para ver o que o servidor A recebe quando cifra para alguém de B
+(entra primeiro como `bob` em `http://localhost:8092`, para o device dele
+publicar as chaves):
+
+```bash
+backend/dev/federation-ping.sh a localhost:8002 GET /_federation/v1/users/bob/devices
+backend/dev/federation-ping.sh a localhost:8002 POST /_federation/v1/devices/<device_id>/prekey-bundle
+```
+
+O primeiro lista os devices do bob com as chaves públicas; o segundo devolve o
+bundle de um deles, e cada chamada gasta uma das chaves de uso único do bob.
+
 ## O que já funciona
 
 - Registo e login reais (username + password), com sessão retomada

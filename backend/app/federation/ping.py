@@ -3,10 +3,12 @@ import sys
 
 from app.federation.client import FederationRequestError, federation_request
 
+USAGE = "uso: python -m app.federation.ping <domínio[:porta]> [MÉTODO CAMINHO]"
 
-async def main(destination: str) -> int:
+
+async def main(destination: str, method: str, path: str) -> int:
     try:
-        response = await federation_request(destination, "GET", "/_federation/v1/ping")
+        response = await federation_request(destination, method, path)
     except FederationRequestError as error:
         print(f"Erro: {error}", file=sys.stderr)
         return 1
@@ -16,6 +18,10 @@ async def main(destination: str) -> int:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        sys.exit("uso: python -m app.federation.ping <domínio[:porta]>")
-    sys.exit(asyncio.run(main(sys.argv[1])))
+    match sys.argv[1:]:
+        case [destination]:
+            sys.exit(asyncio.run(main(destination, "GET", "/_federation/v1/ping")))
+        case [destination, method, path]:
+            sys.exit(asyncio.run(main(destination, method.upper(), path)))
+        case _:
+            sys.exit(USAGE)

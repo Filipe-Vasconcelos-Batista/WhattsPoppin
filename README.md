@@ -199,6 +199,18 @@ repeat the ping from A to B. B refuses with 401, logs a warning and flags the
 new key in the DB (`changed_key`, `key_changed_at` in `federated_servers`),
 never accepting it on its own.
 
+The same script sends any signed request if you add a method and a path. To
+see what server A gets when it encrypts for someone on B (log in as `bob` on
+`http://localhost:8092` first, so his device publishes its keys):
+
+```bash
+backend/dev/federation-ping.sh a localhost:8002 GET /_federation/v1/users/bob/devices
+backend/dev/federation-ping.sh a localhost:8002 POST /_federation/v1/devices/<device_id>/prekey-bundle
+```
+
+The first lists bob's devices with their public keys; the second returns the
+bundle of one of them, and each call spends one of bob's one-time prekeys.
+
 ## What already works
 
 - Real sign-up and login (username + password), with the session resumed

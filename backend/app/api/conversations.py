@@ -1,3 +1,4 @@
+import contextlib
 import uuid
 
 from fastapi import APIRouter, HTTPException
@@ -13,6 +14,11 @@ from app.services.conversations import (
     is_participant,
 )
 from app.services.messaging import find_recipient_device_ids
+from app.services.remote_devices import (
+    RemoteDeviceError,
+    remote_contacts_in_conversation,
+    sync_remote_devices,
+)
 
 router = APIRouter()
 
@@ -52,7 +58,12 @@ async def recipient_devices(
 ) -> RecipientDevicesResponse:
     if not await run_sync(is_participant, conversation_id, identity.user_id):
         raise HTTPException(status_code=404, detail="Conversa não encontrada")
+    for user_id in await run_sync(
+        remote_contacts_in_conversation, conversation_id, identity.user_id
+    ):
+        with contextlib.suppress(RemoteDeviceError):
+            await sync_remote_devices(user_id)
     device_ids = await run_sync(
-        find_recipient_device_ids, conversation_id, identity.device_id, True
+        find_recipient_device_ids, conversation_id, identity.device_id, True, True
     )
     return RecipientDevicesResponse(device_ids=device_ids)
